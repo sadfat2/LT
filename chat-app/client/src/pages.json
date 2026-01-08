@@ -1,0 +1,108 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "消息",
+        "navigationBarBackgroundColor": "#EDEDED",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationBarBackgroundColor": "#EDEDED",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/register/index",
+      "style": {
+        "navigationBarTitleText": "注册",
+        "navigationBarBackgroundColor": "#EDEDED",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/contacts/index",
+      "style": {
+        "navigationBarTitleText": "通讯录",
+        "navigationBarBackgroundColor": "#EDEDED",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/profile/index",
+      "style": {
+        "navigationBarTitleText": "我",
+        "navigationBarBackgroundColor": "#EDEDED",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/chat/index",
+      "style": {
+        "navigationBarTitleText": "聊天",
+        "navigationBarBackgroundColor": "#EDEDED",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/add-friend/index",
+      "style": {
+        "navigationBarTitleText": "添加好友",
+        "navigationBarBackgroundColor": "#EDEDED",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/friend-requests/index",
+      "style": {
+        "navigationBarTitleText": "新的朋友",
+        "navigationBarBackgroundColor": "#EDEDED",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/user-info/index",
+      "style": {
+        "navigationBarTitleText": "用户资料",
+        "navigationBarBackgroundColor": "#EDEDED",
+        "navigationBarTextStyle": "black"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "聊天室",
+    "navigationBarBackgroundColor": "#EDEDED",
+    "backgroundColor": "#F8F8F8"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#07C160",
+    "backgroundColor": "#F7F7F7",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "消息",
+        "iconPath": "static/images/tab-message.png",
+        "selectedIconPath": "static/images/tab-message-active.png"
+      },
+      {
+        "pagePath": "pages/contacts/index",
+        "text": "通讯录",
+        "iconPath": "static/images/tab-contacts.png",
+        "selectedIconPath": "static/images/tab-contacts-active.png"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "我",
+        "iconPath": "static/images/tab-profile.png",
+        "selectedIconPath": "static/images/tab-profile-active.png"
+      }
+    ]
+  }
+}

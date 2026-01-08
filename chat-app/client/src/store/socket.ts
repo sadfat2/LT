@@ -1,0 +1,140 @@
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import { io, Socket } from 'socket.io-client'
+import type { Message } from '../types'
+
+const SOCKET_URL = import.meta.env.DEV ? 'http://localhost:3000' : 'http://localhost:3000'
+
+export const useSocketStore = defineStore('socket', () => {
+  const socket = ref<Socket | null>(null)
+  const connected = ref(false)
+  const onlineUsers = ref<Set<number>>(new Set())
+
+  const isConnected = computed(() => connected.value)
+
+  // 连接 socket
+  const connect = () => {
+    const token = uni.getStorageSync('token')
+    if (!token) return
+
+    if (socket.value?.connected) return
+
+    socket.value = io(SOCKET_URL, {
+      auth: { token },
+      transports: ['websocket', 'polling']
+    })
+
+    socket.value.on('connect', () => {
+      console.log('Socket 已连接')
+      connected.value = true
+    })
+
+    socket.value.on('disconnect', () => {
+      console.log('Socket 已断开')
+      connected.value = false
+    })
+
+    socket.value.on('connect_error', (error) => {
+      console.error('Socket 连接错误:', error)
+      connected.value = false
+    })
+
+    // 用户上线
+    socket.value.on('user_online', ({ userId }) => {
+      onlineUsers.value.add(userId)
+    })
+
+    // 用户下线
+    socket.value.on('user_offline', ({ userId }) => {
+      onlineUsers.value.delete(userId)
+    })
+  }
+
+  // 断开连接
+  const disconnect = () => {
+    if (socket.value) {
+      socket.value.disconnect()
+      socket.value = null
+      connected.value = false
+    }
+  }
+
+  // 发送消息
+  const sendMessage = (
+    data: {
+      conversationId?: number
+      receiverId?: number
+      type: 'text' | 'image' | 'voice'
+      content: string
+      mediaUrl?: string
+      duration?: number
+    },
+    callback?: (result: { success: boolean; message?: Message; conversationId?: number; error?: string }) => void
+  ) => {
+    if (!socket.value?.connected) {
+      callback?.({ success: false, error: '未连接到服务器' })
+      return
+    }
+
+    socket.value.emit('send_message', data, callback)
+  }
+
+  // 标记消息已读
+  const markMessageRead = (conversationId: number, messageId: number) => {
+    if (socket.value?.connected) {
+      socket.value.emit('message_read', { conversationId, messageId })
+    }
+  }
+
+  // 撤回消息
+  const revokeMessage = (
+    messageId: number,
+    conversationId: number,
+    callback?: (result: { success: boolean; error?: string }) => void
+  ) => {
+    if (!socket.value?.connected) {
+      callback?.({ success: false, error: '未连接到服务器' })
+      return
+    }
+
+    socket.value.emit('revoke_message', { messageId, conversationId }, callback)
+  }
+
+  // 发送正在输入
+  const sendTyping = (conversationId: number, receiverId: number) => {
+    if (socket.value?.connected) {
+      socket.value.emit('typing', { conversationId, receiverId })
+    }
+  }
+
+  // 监听事件
+  const on = (event: string, handler: (...args: any[]) => void) => {
+    socket.value?.on(event, handler)
+  }
+
+  // 移除事件监听
+  const off = (event: string, handler?: (...args: any[]) => void) => {
+    socket.value?.off(event, handler)
+  }
+
+  // 检查用户是否在线
+  const isUserOnline = (userId: number) => {
+    return onlineUsers.value.has(userId)
+  }
+
+  return {
+    socket,
+    connected,
+    isConnected,
+    onlineUsers,
+    connect,
+    disconnect,
+    sendMessage,
+    markMessageRead,
+    revokeMessage,
+    sendTyping,
+    on,
+    off,
+    isUserOnline
+  }
+})
