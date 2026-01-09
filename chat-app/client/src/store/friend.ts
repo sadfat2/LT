@@ -69,6 +69,30 @@ export const useFriendStore = defineStore('friend', () => {
     uni.showToast({ title: '已拒绝', icon: 'none' })
   }
 
+  // 更新好友备注
+  const updateRemark = async (friendId: number, remark: string) => {
+    await friendApi.updateRemark(friendId, remark)
+    // 更新本地好友列表中的备注
+    const friend = friends.value.find(f => f.id === friendId)
+    if (friend) {
+      friend.remark = remark || null
+    }
+    // 更新分组好友列表中的备注
+    for (const key in groupedFriends.value) {
+      const groupFriend = groupedFriends.value[key].find(f => f.id === friendId)
+      if (groupFriend) {
+        groupFriend.remark = remark || null
+        break
+      }
+    }
+    uni.showToast({ title: '备注更新成功', icon: 'success' })
+  }
+
+  // 根据ID获取好友信息
+  const getFriendById = (friendId: number): Friend | undefined => {
+    return friends.value.find(f => f.id === friendId)
+  }
+
   // 初始化事件监听
   const initSocketListeners = () => {
     const socketStore = useSocketStore()
@@ -101,6 +125,8 @@ export const useFriendStore = defineStore('friend', () => {
     sendRequest,
     acceptRequest,
     rejectRequest,
+    updateRemark,
+    getFriendById,
     initSocketListeners
   }
 })

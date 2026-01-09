@@ -34,10 +34,10 @@
         >
           <image
             class="avatar"
-            :src="friend.avatar || '/static/images/default-avatar.png'"
+            :src="friend.avatar || '/static/images/default-avatar.svg'"
             mode="aspectFill"
           />
-          <text class="name">{{ friend.nickname }}</text>
+          <text class="name">{{ friend.remark || friend.nickname }}</text>
         </view>
       </template>
 

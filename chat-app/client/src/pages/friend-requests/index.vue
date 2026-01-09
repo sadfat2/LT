@@ -8,7 +8,7 @@
       >
         <image
           class="avatar"
-          :src="request.avatar || '/static/images/default-avatar.png'"
+          :src="request.avatar || '/static/images/default-avatar.svg'"
           mode="aspectFill"
         />
         <view class="info">

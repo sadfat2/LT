@@ -15,12 +15,12 @@
       >
         <image
           class="avatar"
-          :src="conversation.other_user?.avatar || '/static/images/default-avatar.png'"
+          :src="conversation.other_user?.avatar || '/static/images/default-avatar.svg'"
           mode="aspectFill"
         />
         <view class="content">
           <view class="top">
-            <text class="name">{{ conversation.other_user?.nickname || '未知用户' }}</text>
+            <text class="name">{{ getDisplayName(conversation.other_user?.id) }}</text>
             <text class="time">{{ formatTime(conversation.last_message?.created_at) }}</text>
           </view>
           <view class="bottom">
@@ -47,10 +47,19 @@ import { ref, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useConversationStore } from '../../store/conversation'
 import { useUserStore } from '../../store/user'
+import { useFriendStore } from '../../store/friend'
 import type { Conversation, Message } from '../../types'
 
 const conversationStore = useConversationStore()
 const userStore = useUserStore()
+const friendStore = useFriendStore()
+
+// 获取好友显示名称（备注优先）
+const getDisplayName = (userId?: number): string => {
+  if (!userId) return '未知用户'
+  const friend = friendStore.friends.find(f => f.id === userId)
+  return friend?.remark || friend?.nickname || '未知用户'
+}
 
 const loading = ref(false)
 const conversations = ref<Conversation[]>([])
@@ -68,6 +77,10 @@ onMounted(() => {
 onShow(() => {
   if (userStore.isLoggedIn) {
     loadConversations()
+    // 确保好友列表已加载（用于获取备注）
+    if (friendStore.friends.length === 0) {
+      friendStore.fetchFriends()
+    }
   }
 })
 
@@ -87,8 +100,9 @@ const onLoadMore = () => {
 
 const goChat = (conversation: Conversation) => {
   conversationStore.setCurrentConversation(conversation)
+  const displayName = getDisplayName(conversation.other_user?.id)
   uni.navigateTo({
-    url: `/pages/chat/index?conversationId=${conversation.id}&userId=${conversation.other_user?.id}&nickname=${conversation.other_user?.nickname}`
+    url: `/pages/chat/index?conversationId=${conversation.id}&userId=${conversation.other_user?.id}&nickname=${encodeURIComponent(displayName)}&avatar=${encodeURIComponent(conversation.other_user?.avatar || '')}`
   })
 }
 

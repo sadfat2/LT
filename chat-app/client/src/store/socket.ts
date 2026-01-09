@@ -3,7 +3,10 @@ import { ref, computed } from 'vue'
 import { io, Socket } from 'socket.io-client'
 import type { Message } from '../types'
 
-const SOCKET_URL = import.meta.env.DEV ? 'http://localhost:3000' : 'http://localhost:3000'
+// Socket.io 连接地址
+// 开发环境：本地服务器
+// 生产环境：香港节点（低延迟接入，代理到日本）
+const SOCKET_URL = import.meta.env.DEV ? 'http://localhost:3000' : 'https://chat.yourdomain.com'
 
 export const useSocketStore = defineStore('socket', () => {
   const socket = ref<Socket | null>(null)
@@ -21,7 +24,15 @@ export const useSocketStore = defineStore('socket', () => {
 
     socket.value = io(SOCKET_URL, {
       auth: { token },
-      transports: ['websocket', 'polling']
+      // 优先使用 WebSocket（跳过轮询，减少延迟）
+      transports: ['websocket', 'polling'],
+      // 重连配置（跨境网络可能不稳定）
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      // 连接超时（跨境网络延迟较高）
+      timeout: 20000
     })
 
     socket.value.on('connect', () => {

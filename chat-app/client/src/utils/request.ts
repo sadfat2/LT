@@ -1,6 +1,26 @@
 import type { ApiResponse } from '../types'
 
-const BASE_URL = import.meta.env.DEV ? '' : 'http://localhost:3000'
+// API 地址配置
+// 开发环境：使用 Vite 代理
+// 生产环境：使用香港节点（低延迟接入）
+const BASE_URL = import.meta.env.DEV ? '' : 'https://chat.yourdomain.com'
+
+// CDN 地址配置（静态资源：图片、语音、头像）
+// 生产环境：使用 Cloudflare CDN（日本节点）
+const CDN_BASE_URL = import.meta.env.DEV ? '' : 'https://cdn.yourdomain.com'
+
+/**
+ * 获取静态资源完整 URL（通过 CDN 加速）
+ * @param path 资源路径，如 /uploads/images/xxx.jpg
+ * @returns 完整 URL
+ */
+export function getAssetUrl(path: string): string {
+  if (!path) return ''
+  // 已经是完整 URL 则直接返回
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  // 开发环境使用本地，生产环境使用 CDN
+  return `${CDN_BASE_URL}${path}`
+}
 
 interface RequestOptions extends UniApp.RequestOptions {
   showLoading?: boolean

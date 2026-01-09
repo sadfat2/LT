@@ -12,6 +12,7 @@ export interface User {
 // 好友类型
 export interface Friend extends User {
   pinyin: string
+  remark?: string | null
 }
 
 // 好友申请类型

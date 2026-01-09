@@ -30,14 +30,27 @@
 
         <!-- 消息气泡 -->
         <view class="message-content">
+          <!-- 接收者头像（左侧） -->
           <image
             v-if="message.sender_id !== currentUserId"
             class="avatar-small"
-            :src="otherUser?.avatar || '/static/images/default-avatar.png'"
+            :src="otherUser?.avatar || '/static/images/default-avatar.svg'"
             mode="aspectFill"
           />
 
+          <!-- 图片消息（无气泡） -->
+          <image
+            v-if="message.type === 'image'"
+            class="image-content"
+            :src="message.media_url"
+            mode="widthFix"
+            @click="previewImage(message.media_url)"
+            @longpress="showMessageActions(message)"
+          />
+
+          <!-- 文本/语音消息（有气泡） -->
           <view
+            v-else
             class="bubble"
             :class="{ revoked: message.status === 'revoked' }"
             @longpress="showMessageActions(message)"
@@ -46,15 +59,6 @@
             <text v-if="message.type === 'text'" class="text-content">
               {{ message.content }}
             </text>
-
-            <!-- 图片消息 -->
-            <image
-              v-else-if="message.type === 'image'"
-              class="image-content"
-              :src="message.media_url"
-              mode="widthFix"
-              @click="previewImage(message.media_url)"
-            />
 
             <!-- 语音消息 -->
             <view
@@ -71,10 +75,11 @@
             </view>
           </view>
 
+          <!-- 发送者头像（右侧） -->
           <image
             v-if="message.sender_id === currentUserId"
             class="avatar-small"
-            :src="currentUser?.avatar || '/static/images/default-avatar.png'"
+            :src="currentUser?.avatar || '/static/images/default-avatar.svg'"
             mode="aspectFill"
           />
         </view>
@@ -206,12 +211,14 @@ onLoad((options) => {
     otherUserId.value = parseInt(options.userId)
   }
   if (options?.nickname) {
-    uni.setNavigationBarTitle({ title: options.nickname })
+    const nickname = decodeURIComponent(options.nickname)
+    const avatar = options?.avatar ? decodeURIComponent(options.avatar) : null
+    uni.setNavigationBarTitle({ title: nickname })
     otherUser.value = {
       id: otherUserId.value,
-      nickname: options.nickname,
+      nickname: nickname,
       account: '',
-      avatar: null,
+      avatar: avatar,
       signature: null
     }
   }
@@ -430,17 +437,53 @@ const takePhoto = () => {
 }
 
 const sendImageMessage = async (filePath: string) => {
+  // 先添加临时消息（乐观更新）
+  const tempMessage: Message = {
+    id: Date.now(),
+    conversation_id: conversationId.value,
+    sender_id: currentUserId.value!,
+    type: 'image',
+    content: '',
+    media_url: filePath, // 先显示本地图片
+    status: 'sending',
+    created_at: new Date().toISOString()
+  }
+  messages.value.push(tempMessage)
+  scrollToBottom()
+
   try {
     const res = await uploadApi.image(filePath)
 
-    socketStore.sendMessage({
-      conversationId: conversationId.value || undefined,
-      receiverId: otherUserId.value,
-      type: 'image',
-      content: '',
-      mediaUrl: res.data.url
-    })
+    socketStore.sendMessage(
+      {
+        conversationId: conversationId.value || undefined,
+        receiverId: otherUserId.value,
+        type: 'image',
+        content: '',
+        mediaUrl: res.data.url
+      },
+      (result) => {
+        // 更新消息
+        const index = messages.value.findIndex(m => m.id === tempMessage.id)
+        if (index !== -1) {
+          if (result.success && result.message) {
+            messages.value[index] = result.message
+            if (!conversationId.value) {
+              conversationId.value = result.conversationId!
+            }
+          } else {
+            messages.value[index].status = 'sent'
+            messages.value[index].media_url = res.data.url
+          }
+        }
+      }
+    )
   } catch (error) {
+    // 发送失败，移除临时消息
+    const index = messages.value.findIndex(m => m.id === tempMessage.id)
+    if (index !== -1) {
+      messages.value.splice(index, 1)
+    }
     uni.showToast({ title: '发送图片失败', icon: 'none' })
   }
 }
@@ -641,13 +684,11 @@ const scrollToBottom = () => {
 }
 
 .message-item.self .message-content {
-  flex-direction: row-reverse;
+  justify-content: flex-end;
 }
 
 .message-item.self .bubble {
   background-color: var(--primary-light);
-  margin-right: 16rpx;
-  margin-left: 0;
 }
 
 .message-item.self .message-status {
@@ -672,6 +713,7 @@ const scrollToBottom = () => {
   height: 72rpx;
   border-radius: 8rpx;
   flex-shrink: 0;
+  margin: 0 20rpx;
 }
 
 .bubble {
@@ -679,7 +721,6 @@ const scrollToBottom = () => {
   background-color: var(--bg-white);
   border-radius: 8rpx;
   padding: 20rpx;
-  margin-left: 16rpx;
 }
 
 .bubble.revoked {
@@ -700,7 +741,7 @@ const scrollToBottom = () => {
 
 .image-content {
   max-width: 400rpx;
-  border-radius: 8rpx;
+  border-radius: 12rpx;
 }
 
 .voice-content {

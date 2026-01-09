@@ -188,4 +188,34 @@ router.post('/reject/:id', authMiddleware, async (req, res, next) => {
   }
 });
 
+// 更新好友备注
+router.put('/:friendId/remark', authMiddleware, async (req, res, next) => {
+  try {
+    const friendId = parseInt(req.params.friendId);
+    const { remark } = req.body;
+
+    // 检查是否为好友
+    const isFriend = await Friend.isFriend(req.user.id, friendId);
+    if (!isFriend) {
+      throw new AppError('对方不是你的好友', 400);
+    }
+
+    // 备注长度限制
+    if (remark && remark.length > 50) {
+      throw new AppError('备注最长50个字符', 400);
+    }
+
+    // 更新备注
+    await Friend.updateRemark(req.user.id, friendId, remark);
+
+    res.json({
+      code: 200,
+      message: '备注更新成功',
+      data: { remark: remark || null }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

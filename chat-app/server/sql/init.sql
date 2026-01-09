@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS friendships (
     id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL COMMENT '用户ID',
     friend_id INT NOT NULL COMMENT '好友ID',
+    remark VARCHAR(50) DEFAULT NULL COMMENT '好友备注',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_user_friend (user_id, friend_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

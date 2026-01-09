@@ -54,7 +54,11 @@ export const friendApi = {
   accept: (id: number) => post('/api/friends/accept/' + id),
 
   // 拒绝好友申请
-  reject: (id: number) => post('/api/friends/reject/' + id)
+  reject: (id: number) => post('/api/friends/reject/' + id),
+
+  // 更新好友备注
+  updateRemark: (friendId: number, remark: string) =>
+    put<{ remark: string | null }>(`/api/friends/${friendId}/remark`, { remark })
 }
 
 // 会话相关

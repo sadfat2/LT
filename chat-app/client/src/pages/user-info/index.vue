@@ -3,13 +3,25 @@
     <view class="user-card">
       <image
         class="avatar-large"
-        :src="user?.avatar || '/static/images/default-avatar.png'"
+        :src="user?.avatar || '/static/images/default-avatar.svg'"
         mode="aspectFill"
       />
       <view class="info">
         <text class="nickname">{{ user?.nickname }}</text>
+        <text v-if="friendInfo?.remark" class="remark">备注: {{ friendInfo.remark }}</text>
         <text class="account">账号: {{ user?.account }}</text>
         <text v-if="user?.signature" class="signature">{{ user.signature }}</text>
+      </view>
+    </view>
+
+    <!-- 好友设置区域 -->
+    <view v-if="isFriend" class="settings-section">
+      <view class="settings-item" @click="editRemark">
+        <text class="label">设置备注</text>
+        <view class="value-row">
+          <text class="value">{{ friendInfo?.remark || '未设置' }}</text>
+          <text class="arrow">></text>
+        </view>
       </view>
     </view>
 
@@ -34,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { userApi } from '../../api'
 import { useFriendStore } from '../../store/friend'
@@ -48,6 +60,11 @@ const userId = ref<number>(0)
 const isFriend = ref(false)
 const user = ref<User | null>(null)
 const adding = ref(false)
+
+// 获取好友信息（包含备注）
+const friendInfo = computed(() => {
+  return friendStore.friends.find(f => f.id === userId.value)
+})
 
 onLoad((options) => {
   if (options?.userId) {
@@ -79,9 +96,11 @@ onMounted(async () => {
 const goChat = async () => {
   if (!user.value) return
 
+  // 导航时使用备注名（如果有）
+  const displayName = friendInfo.value?.remark || user.value.nickname
   const conversationId = await conversationStore.createPrivate(userId.value)
   uni.navigateTo({
-    url: `/pages/chat/index?conversationId=${conversationId}&userId=${userId.value}&nickname=${user.value.nickname}`
+    url: `/pages/chat/index?conversationId=${conversationId}&userId=${userId.value}&nickname=${encodeURIComponent(displayName)}&avatar=${encodeURIComponent(user.value.avatar || '')}`
   })
 }
 
@@ -92,6 +111,25 @@ const handleAdd = async () => {
   } finally {
     adding.value = false
   }
+}
+
+// 编辑备注
+const editRemark = () => {
+  uni.showModal({
+    title: '设置备注',
+    editable: true,
+    placeholderText: '请输入备注名称',
+    content: friendInfo.value?.remark || '',
+    success: async (res) => {
+      if (res.confirm) {
+        try {
+          await friendStore.updateRemark(userId.value, res.content || '')
+        } catch (error) {
+          console.error('更新备注失败', error)
+        }
+      }
+    }
+  })
 }
 </script>
 
@@ -136,11 +174,54 @@ const handleAdd = async () => {
   margin-bottom: 12rpx;
 }
 
+.remark {
+  font-size: 26rpx;
+  color: var(--primary-color);
+  margin-bottom: 8rpx;
+}
+
 .signature {
   font-size: 26rpx;
   color: var(--text-secondary);
   text-align: center;
   max-width: 500rpx;
+}
+
+.settings-section {
+  background-color: var(--bg-white);
+  margin-bottom: 20rpx;
+}
+
+.settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx;
+}
+
+.settings-item:active {
+  background-color: #f5f5f5;
+}
+
+.settings-item .label {
+  font-size: 30rpx;
+  color: var(--text-color);
+}
+
+.settings-item .value-row {
+  display: flex;
+  align-items: center;
+}
+
+.settings-item .value {
+  font-size: 28rpx;
+  color: var(--text-secondary);
+  margin-right: 10rpx;
+}
+
+.settings-item .arrow {
+  color: var(--text-light);
+  font-size: 28rpx;
 }
 
 .actions {

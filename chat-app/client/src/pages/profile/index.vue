@@ -5,7 +5,7 @@
       <view class="avatar-area" @click="changeAvatar">
         <image
           class="avatar-large"
-          :src="user?.avatar || '/static/images/default-avatar.png'"
+          :src="user?.avatar || '/static/images/default-avatar.svg'"
           mode="aspectFill"
         />
         <view class="avatar-edit">

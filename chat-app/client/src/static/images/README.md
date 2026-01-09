@@ -2,7 +2,7 @@
 
 请在此目录放置以下图片资源：
 
-1. `default-avatar.png` - 默认头像（建议尺寸 200x200）
+1. `default-avatar.svg` - 默认头像（SVG 格式，200x200）
 2. `tab-message.png` - 消息 Tab 图标（建议尺寸 48x48）
 3. `tab-message-active.png` - 消息 Tab 激活图标
 4. `tab-contacts.png` - 通讯录 Tab 图标

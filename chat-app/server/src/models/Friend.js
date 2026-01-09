@@ -4,7 +4,7 @@ class Friend {
   // 获取好友列表（按拼音排序）
   static async getFriendList(userId) {
     const [rows] = await pool.execute(
-      `SELECT u.id, u.account, u.nickname, u.avatar, u.signature, u.pinyin
+      `SELECT u.id, u.account, u.nickname, u.avatar, u.signature, u.pinyin, f.remark
        FROM friendships f
        JOIN users u ON f.friend_id = u.id
        WHERE f.user_id = ?
@@ -12,6 +12,24 @@ class Friend {
       [userId]
     );
     return rows;
+  }
+
+  // 更新好友备注
+  static async updateRemark(userId, friendId, remark) {
+    const [result] = await pool.execute(
+      'UPDATE friendships SET remark = ? WHERE user_id = ? AND friend_id = ?',
+      [remark || null, userId, friendId]
+    );
+    return result.affectedRows > 0;
+  }
+
+  // 获取好友备注
+  static async getRemark(userId, friendId) {
+    const [rows] = await pool.execute(
+      'SELECT remark FROM friendships WHERE user_id = ? AND friend_id = ?',
+      [userId, friendId]
+    );
+    return rows[0]?.remark || null;
   }
 
   // 检查是否已是好友

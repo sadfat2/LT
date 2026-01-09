@@ -9,11 +9,32 @@ const User = require('../models/User');
 let io;
 
 const initSocket = (server) => {
+  // 生产环境 CORS 配置
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : ['*'];
+
   io = new Server(server, {
     cors: {
-      origin: '*',
-      methods: ['GET', 'POST']
-    }
+      origin: process.env.NODE_ENV === 'production' ? allowedOrigins : '*',
+      methods: ['GET', 'POST'],
+      credentials: true
+    },
+    // 心跳优化（适合跨境网络）
+    pingTimeout: 60000,      // 60秒无响应断开
+    pingInterval: 25000,     // 25秒发送一次心跳
+    // 传输优化
+    transports: ['websocket', 'polling'],
+    allowUpgrades: true,
+    // 消息压缩（减少跨境传输数据量）
+    perMessageDeflate: {
+      threshold: 1024,  // 超过 1KB 才压缩
+      zlibDeflateOptions: {
+        chunkSize: 16 * 1024
+      }
+    },
+    // 连接超时
+    connectTimeout: 45000
   });
 
   // 认证中间件

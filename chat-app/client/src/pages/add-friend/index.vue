@@ -22,7 +22,7 @@
       >
         <image
           class="avatar"
-          :src="user.avatar || '/static/images/default-avatar.png'"
+          :src="user.avatar || '/static/images/default-avatar.svg'"
           mode="aspectFill"
         />
         <view class="info">
