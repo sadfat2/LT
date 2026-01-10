@@ -50,12 +50,21 @@ export interface GroupMember {
   user: User
 }
 
+// 群聊信息（会话列表用）
+export interface GroupInfo {
+  id: number
+  name: string
+  avatar: string | null
+  member_avatars: { id: number; avatar: string | null; nickname: string }[]
+}
+
 // 会话类型
 export interface Conversation {
   id: number
   type: 'private' | 'group'
   group_id?: number
   group?: Group
+  group_info?: GroupInfo  // 群聊信息（会话列表用）
   other_user: User | null  // 私聊对方
   last_message: Message | null
   unread_count: number

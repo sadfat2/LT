@@ -1,5 +1,19 @@
 <template>
   <view class="chat-page">
+    <!-- 自定义导航栏 -->
+    <view class="custom-nav">
+      <view class="nav-left" @click="goBack">
+        <text class="back-icon">‹</text>
+      </view>
+      <view class="nav-title">
+        <text>{{ navTitle }}</text>
+      </view>
+      <view class="nav-right" @click="goGroupDetail" v-if="conversationType === 'group'">
+        <text class="more-icon">···</text>
+      </view>
+      <view class="nav-right" v-else></view>
+    </view>
+
     <!-- 消息列表 -->
     <scroll-view
       ref="scrollView"
@@ -263,6 +277,7 @@ const otherUser = ref<User | null>(null)
 const conversationType = ref<'private' | 'group'>('private')
 const groupId = ref<number>(0)
 const group = ref<Group | null>(null)
+const navTitle = ref('聊天')
 
 const messages = ref<Message[]>([])
 const inputText = ref('')
@@ -303,12 +318,12 @@ onLoad(async (options) => {
       // 加载群详情
       const groupDetail = await groupStore.fetchGroupDetail(groupId.value)
       group.value = groupDetail
-      uni.setNavigationBarTitle({ title: groupDetail.name })
+      navTitle.value = groupDetail.name
     }
   } else if (options?.nickname) {
     const nickname = decodeURIComponent(options.nickname)
     const avatar = options?.avatar ? decodeURIComponent(options.avatar) : null
-    uni.setNavigationBarTitle({ title: nickname })
+    navTitle.value = nickname
     otherUser.value = {
       id: otherUserId.value,
       nickname: nickname,
@@ -610,6 +625,20 @@ const toggleVoice = async () => {
 
 const toggleMore = () => {
   showMore.value = !showMore.value
+}
+
+// 返回上一页
+const goBack = () => {
+  uni.navigateBack()
+}
+
+// 跳转到群详情页面
+const goGroupDetail = () => {
+  if (groupId.value) {
+    uni.navigateTo({
+      url: `/pages/group/detail?groupId=${groupId.value}`
+    })
+  }
 }
 
 // 发起语音通话
@@ -1347,6 +1376,55 @@ const scrollToBottom = () => {
   flex-direction: column;
   height: 100vh;
   background-color: var(--bg-color);
+}
+
+/* 自定义导航栏 */
+.custom-nav {
+  display: flex;
+  align-items: center;
+  height: 88rpx;
+  padding-top: env(safe-area-inset-top);
+  background-color: #EDEDED;
+  border-bottom: 1rpx solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.nav-left {
+  width: 100rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.back-icon {
+  font-size: 56rpx;
+  color: var(--text-color);
+  font-weight: 300;
+}
+
+.nav-title {
+  flex: 1;
+  text-align: center;
+  font-size: 34rpx;
+  font-weight: 500;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-right {
+  width: 100rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.more-icon {
+  font-size: 40rpx;
+  font-weight: bold;
+  color: var(--text-color);
+  letter-spacing: 2rpx;
 }
 
 .message-list {

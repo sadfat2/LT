@@ -50,9 +50,8 @@
     {
       "path": "pages/chat/index",
       "style": {
-        "navigationBarTitleText": "聊天",
-        "navigationBarBackgroundColor": "#EDEDED",
-        "navigationBarTextStyle": "black"
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "聊天"
       }
     },
     {
@@ -91,6 +90,13 @@
       "style": {
         "navigationStyle": "custom",
         "navigationBarTitleText": "群聊信息"
+      }
+    },
+    {
+      "path": "pages/group/invite",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "邀请成员"
       }
     }
   ],

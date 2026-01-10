@@ -18,6 +18,13 @@
           {{ pendingCount > 99 ? '99+' : pendingCount }}
         </view>
       </view>
+
+      <view class="function-item" @click="goCreateGroup">
+        <view class="icon group-icon">
+          <text class="icon-text">群</text>
+        </view>
+        <text class="function-name">发起群聊</text>
+      </view>
     </view>
 
     <!-- 好友列表 -->
@@ -114,6 +121,10 @@ const goFriendRequests = () => {
   uni.navigateTo({ url: '/pages/friend-requests/index' })
 }
 
+const goCreateGroup = () => {
+  uni.navigateTo({ url: '/pages/group/create' })
+}
+
 const goUserInfo = (friend: Friend) => {
   uni.navigateTo({
     url: `/pages/user-info/index?userId=${friend.id}&isFriend=true`
@@ -167,6 +178,10 @@ const scrollToLetter = (letter: string) => {
 
 .request-icon {
   background-color: #fa9d3b;
+}
+
+.group-icon {
+  background-color: #07C160;
 }
 
 .icon-text {

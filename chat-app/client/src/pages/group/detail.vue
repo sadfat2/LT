@@ -24,10 +24,18 @@
             :key="member.id"
             class="member-item"
             @click="viewMember(member)"
+            @longpress="showMemberActions(member)"
           >
-            <image class="member-avatar" :src="member.user.avatar || '/static/default-avatar.png'" mode="aspectFill" />
+            <image class="member-avatar" :src="member.user.avatar || '/static/images/default-avatar.svg'" mode="aspectFill" />
             <text class="member-name">{{ member.user.nickname || member.user.account }}</text>
             <text v-if="member.role === 'owner'" class="owner-badge">群主</text>
+          </view>
+          <!-- 移除成员按钮（仅群主可见） -->
+          <view v-if="isOwner" class="member-item remove-btn" @click="enterRemoveMode">
+            <view class="remove-icon">
+              <text>-</text>
+            </view>
+            <text class="member-name">移除</text>
           </view>
           <view v-if="group.members && group.members.length > 15" class="member-item more" @click="viewAllMembers">
             <view class="more-icon">
@@ -98,6 +106,70 @@ const viewMember = (member: any) => {
       url: `/pages/user-info/index?userId=${member.user_id}`
     })
   }
+}
+
+// 长按成员显示操作菜单
+const showMemberActions = (member: any) => {
+  // 只有群主可以移除成员，且不能移除自己
+  if (!isOwner.value || member.user_id === userStore.user?.id) {
+    return
+  }
+
+  uni.showActionSheet({
+    itemList: ['移除该成员'],
+    success: (res) => {
+      if (res.tapIndex === 0) {
+        removeMember(member)
+      }
+    }
+  })
+}
+
+// 移除成员
+const removeMember = (member: any) => {
+  const nickname = member.user.nickname || member.user.account
+
+  uni.showModal({
+    title: '移除成员',
+    content: `确定将 ${nickname} 移出群聊？`,
+    confirmColor: '#e64340',
+    success: async (res) => {
+      if (res.confirm) {
+        try {
+          await groupStore.removeMember(groupId.value, member.user_id)
+          uni.showToast({ title: '已移除', icon: 'success' })
+        } catch (error: any) {
+          uni.showToast({ title: error.message || '移除失败', icon: 'none' })
+        }
+      }
+    }
+  })
+}
+
+// 进入移除模式（点击移除按钮）
+const enterRemoveMode = () => {
+  if (!group.value?.members || group.value.members.length <= 1) {
+    uni.showToast({ title: '没有可移除的成员', icon: 'none' })
+    return
+  }
+
+  // 获取可移除的成员列表（排除群主自己）
+  const removableMembers = group.value.members.filter(m => m.user_id !== userStore.user?.id)
+
+  if (removableMembers.length === 0) {
+    uni.showToast({ title: '没有可移除的成员', icon: 'none' })
+    return
+  }
+
+  const itemList = removableMembers.map(m => m.user.nickname || m.user.account)
+
+  uni.showActionSheet({
+    itemList,
+    success: (res) => {
+      const member = removableMembers[res.tapIndex]
+      removeMember(member)
+    }
+  })
 }
 
 const viewAllMembers = () => {
@@ -272,6 +344,22 @@ const goBack = () => {
   align-items: center;
   justify-content: center;
   color: #999;
+}
+
+.remove-icon {
+  width: 50px;
+  height: 50px;
+  border: 1px dashed #e64340;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e64340;
+  font-size: 24px;
+}
+
+.remove-btn .member-name {
+  color: #e64340;
 }
 
 .info-item {

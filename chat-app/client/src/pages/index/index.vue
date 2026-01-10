@@ -13,19 +13,32 @@
         @click="goChat(conversation)"
         @longpress="showActions(conversation)"
       >
+        <!-- 群聊头像（九宫格组合） -->
+        <view v-if="conversation.type === 'group'" class="group-avatar">
+          <image
+            v-for="(member, index) in getGroupAvatars(conversation)"
+            :key="index"
+            class="group-avatar-item"
+            :class="'count-' + getGroupAvatars(conversation).length"
+            :src="member.avatar || '/static/images/default-avatar.svg'"
+            mode="aspectFill"
+          />
+        </view>
+        <!-- 私聊头像 -->
         <image
+          v-else
           class="avatar"
           :src="conversation.other_user?.avatar || '/static/images/default-avatar.svg'"
           mode="aspectFill"
         />
         <view class="content">
           <view class="top">
-            <text class="name">{{ getDisplayName(conversation.other_user?.id) }}</text>
+            <text class="name">{{ getConversationName(conversation) }}</text>
             <text class="time">{{ formatTime(conversation.last_message?.created_at) }}</text>
           </view>
           <view class="bottom">
             <text class="message" :class="{ revoked: conversation.last_message?.status === 'revoked' }">
-              {{ getMessagePreview(conversation.last_message) }}
+              {{ getMessagePreview(conversation) }}
             </text>
             <view v-if="conversation.unread_count > 0" class="badge">
               {{ conversation.unread_count > 99 ? '99+' : conversation.unread_count }}
@@ -65,6 +78,19 @@ const getDisplayName = (userId?: number): string => {
   if (!userId) return '未知用户'
   const friend = friendStore.friends.find(f => f.id === userId)
   return friend?.remark || friend?.nickname || '未知用户'
+}
+
+// 获取会话名称（支持群聊和私聊）
+const getConversationName = (conversation: Conversation): string => {
+  if (conversation.type === 'group') {
+    return conversation.group_info?.name || '群聊'
+  }
+  return getDisplayName(conversation.other_user?.id)
+}
+
+// 获取群聊头像列表（最多4个）
+const getGroupAvatars = (conversation: Conversation) => {
+  return conversation.group_info?.member_avatars || []
 }
 
 const loading = ref(false)
@@ -114,10 +140,19 @@ const onLoadMore = () => {
 
 const goChat = (conversation: Conversation) => {
   conversationStore.setCurrentConversation(conversation)
-  const displayName = getDisplayName(conversation.other_user?.id)
-  uni.navigateTo({
-    url: `/pages/chat/index?conversationId=${conversation.id}&userId=${conversation.other_user?.id}&nickname=${encodeURIComponent(displayName)}&avatar=${encodeURIComponent(conversation.other_user?.avatar || '')}`
-  })
+
+  if (conversation.type === 'group') {
+    // 群聊
+    uni.navigateTo({
+      url: `/pages/chat/index?conversationId=${conversation.id}&type=group&groupId=${conversation.group_id}`
+    })
+  } else {
+    // 私聊
+    const displayName = getDisplayName(conversation.other_user?.id)
+    uni.navigateTo({
+      url: `/pages/chat/index?conversationId=${conversation.id}&userId=${conversation.other_user?.id}&nickname=${encodeURIComponent(displayName)}&avatar=${encodeURIComponent(conversation.other_user?.avatar || '')}`
+    })
+  }
 }
 
 const showActions = (conversation: Conversation) => {
@@ -140,23 +175,47 @@ const showActions = (conversation: Conversation) => {
   })
 }
 
-const getMessagePreview = (message: Message | null) => {
+const getMessagePreview = (conversation: Conversation) => {
+  const message = conversation.last_message
   if (!message) return ''
 
   if (message.status === 'revoked') {
     return '此消息已撤回'
   }
 
+  let prefix = ''
+  // 群聊显示发送者
+  if (conversation.type === 'group' && message.sender_id) {
+    const member = conversation.group_info?.member_avatars?.find(m => m.id === message.sender_id)
+    const senderName = member?.nickname || '成员'
+    prefix = `${senderName}: `
+  }
+
+  let content = ''
   switch (message.type) {
     case 'text':
-      return message.content
+      content = message.content
+      break
     case 'image':
-      return '[图片]'
+      content = '[图片]'
+      break
     case 'voice':
-      return '[语音]'
+      content = '[语音]'
+      break
+    case 'video':
+      content = '[视频]'
+      break
+    case 'file':
+      content = '[文件]'
+      break
+    case 'system':
+      content = message.content
+      break
     default:
-      return message.content
+      content = message.content
   }
+
+  return prefix + content
 }
 
 const formatTime = (time?: string) => {
@@ -217,6 +276,52 @@ const formatTime = (time?: string) => {
   border-radius: 8rpx;
   margin-right: 24rpx;
   flex-shrink: 0;
+}
+
+/* 群聊头像组合 */
+.group-avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 8rpx;
+  margin-right: 24rpx;
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  background-color: #e0e0e0;
+  overflow: hidden;
+}
+
+.group-avatar-item {
+  object-fit: cover;
+}
+
+/* 1个成员 */
+.group-avatar-item.count-1 {
+  width: 96rpx;
+  height: 96rpx;
+}
+
+/* 2个成员 */
+.group-avatar-item.count-2 {
+  width: 48rpx;
+  height: 96rpx;
+}
+
+/* 3个成员 */
+.group-avatar-item.count-3 {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.group-avatar-item.count-3:first-child {
+  width: 96rpx;
+  height: 48rpx;
+}
+
+/* 4个成员 */
+.group-avatar-item.count-4 {
+  width: 48rpx;
+  height: 48rpx;
 }
 
 .content {

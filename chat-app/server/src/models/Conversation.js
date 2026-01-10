@@ -44,7 +44,7 @@ class Conversation {
   // 获取用户的会话列表
   static async getUserConversations(userId) {
     const [rows] = await pool.execute(
-      `SELECT c.id, c.type, c.updated_at,
+      `SELECT c.id, c.type, c.group_id, c.updated_at,
               (SELECT JSON_OBJECT(
                 'id', u.id,
                 'nickname', u.nickname,
@@ -59,7 +59,8 @@ class Conversation {
                 'type', m.type,
                 'content', m.content,
                 'sender_id', m.sender_id,
-                'created_at', m.created_at
+                'created_at', m.created_at,
+                'status', m.status
               )
               FROM messages m
               WHERE m.conversation_id = c.id
@@ -70,12 +71,47 @@ class Conversation {
                WHERE m.conversation_id = c.id
                AND m.sender_id != ?
                AND (m.status = 'sent' OR m.status = 'delivered')
-               AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')) as unread_count
+               AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')) as unread_count,
+              g.id as group_info_id,
+              g.name as group_name,
+              g.avatar as group_avatar
        FROM conversations c
        JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = ?
+       LEFT JOIN \`groups\` g ON c.group_id = g.id
        ORDER BY c.updated_at DESC`,
       [userId, userId, userId]
     );
+
+    // 获取群聊的成员头像（最多4个）
+    const groupIds = rows.filter(r => r.type === 'group' && r.group_id).map(r => r.group_id);
+    let groupMembersMap = {};
+
+    if (groupIds.length > 0) {
+      const placeholders = groupIds.map(() => '?').join(',');
+      const [members] = await pool.execute(
+        `SELECT gm.group_id, u.id, u.avatar, u.nickname
+         FROM group_members gm
+         JOIN users u ON gm.user_id = u.id
+         WHERE gm.group_id IN (${placeholders})
+         ORDER BY gm.group_id, gm.joined_at
+         LIMIT 100`,
+        groupIds
+      );
+
+      // 按群组分组，每组最多取4个
+      for (const member of members) {
+        if (!groupMembersMap[member.group_id]) {
+          groupMembersMap[member.group_id] = [];
+        }
+        if (groupMembersMap[member.group_id].length < 4) {
+          groupMembersMap[member.group_id].push({
+            id: member.id,
+            avatar: member.avatar,
+            nickname: member.nickname
+          });
+        }
+      }
+    }
 
     return rows.map(row => {
       let other_user = row.other_user;
@@ -97,10 +133,26 @@ class Conversation {
         }
       }
 
+      // 构建群聊信息
+      let group_info = null;
+      if (row.type === 'group' && row.group_id) {
+        group_info = {
+          id: row.group_id,
+          name: row.group_name,
+          avatar: row.group_avatar,
+          member_avatars: groupMembersMap[row.group_id] || []
+        };
+      }
+
       return {
-        ...row,
+        id: row.id,
+        type: row.type,
+        group_id: row.group_id,
+        updated_at: row.updated_at,
         other_user,
-        last_message
+        last_message,
+        unread_count: row.unread_count,
+        group_info
       };
     });
   }
