@@ -1,0 +1,42 @@
+# 上传文件目录
+chat-app/server/uploads/
+!chat-app/server/uploads/.gitkeep
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 日志文件
+logs/
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 构建产物
+dist/
+build/
+.output/
+
+# UniApp 构建
+chat-app/client/dist/
+chat-app/client/unpackage/
+
+# 临时文件
+*.tmp
+*.temp
+.cache/

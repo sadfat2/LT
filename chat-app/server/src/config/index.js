@@ -24,8 +24,24 @@ module.exports = {
 
   // 上传配置
   upload: {
-    maxSize: 10 * 1024 * 1024, // 10MB
+    maxSize: 10 * 1024 * 1024, // 10MB（图片）
+    maxFileSize: 20 * 1024 * 1024, // 20MB（文件）
+    maxVideoSize: 50 * 1024 * 1024, // 50MB（视频）
     allowedImageTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-    allowedVoiceTypes: ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/m4a', 'audio/aac']
+    allowedVoiceTypes: [
+      'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/m4a', 'audio/aac',
+      'audio/webm', 'audio/ogg', 'audio/opus'  // H5 录音格式
+    ],
+    allowedFileTypes: [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'text/plain'
+    ],
+    allowedVideoTypes: ['video/mp4', 'video/quicktime', 'video/webm']
   }
 };

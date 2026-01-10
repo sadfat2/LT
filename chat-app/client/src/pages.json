@@ -71,6 +71,20 @@
         "navigationBarBackgroundColor": "#EDEDED",
         "navigationBarTextStyle": "black"
       }
+    },
+    {
+      "path": "pages/group/create",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "发起群聊"
+      }
+    },
+    {
+      "path": "pages/group/detail",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "群聊信息"
+      }
     }
   ],
   "globalStyle": {

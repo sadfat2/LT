@@ -75,10 +75,13 @@ export const useSocketStore = defineStore('socket', () => {
     data: {
       conversationId?: number
       receiverId?: number
-      type: 'text' | 'image' | 'voice'
+      type: 'text' | 'image' | 'voice' | 'file' | 'video'
       content: string
       mediaUrl?: string
       duration?: number
+      fileName?: string
+      fileSize?: number
+      thumbnailUrl?: string
     },
     callback?: (result: { success: boolean; message?: Message; conversationId?: number; error?: string }) => void
   ) => {

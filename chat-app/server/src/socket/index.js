@@ -5,6 +5,7 @@ const redisClient = require('../config/redis');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
+const Group = require('../models/Group');
 
 let io;
 
@@ -71,7 +72,7 @@ const initSocket = (server) => {
     // 发送消息
     socket.on('send_message', async (data, callback) => {
       try {
-        const { conversationId, receiverId, type, content, mediaUrl, duration } = data;
+        const { conversationId, receiverId, type, content, mediaUrl, duration, fileName, fileSize, thumbnailUrl } = data;
 
         let convId = conversationId;
 
@@ -88,7 +89,10 @@ const initSocket = (server) => {
           type || 'text',
           content,
           mediaUrl,
-          duration
+          duration,
+          fileName,
+          fileSize,
+          thumbnailUrl
         );
 
         // 更新会话时间
@@ -97,23 +101,39 @@ const initSocket = (server) => {
         // 获取完整消息
         const message = await Message.findById(messageId);
 
-        // 获取接收者ID
-        let targetId = receiverId;
-        if (!targetId) {
-          // 从会话中获取对方ID
-          const conversations = await Conversation.getUserConversations(userId);
-          const conv = conversations.find(c => c.id === convId);
-          if (conv && conv.other_user) {
-            targetId = conv.other_user.id;
-          }
-        }
+        // 检查是否是群聊
+        const group = await Group.findByConversationId(convId);
 
-        // 发送给接收者
-        if (targetId) {
-          io.to(`user_${targetId}`).emit('new_message', {
-            conversationId: convId,
-            message
+        if (group) {
+          // 群聊消息：广播给所有群成员（除了发送者）
+          const memberIds = await Group.getMemberIds(group.id);
+          memberIds.forEach(memberId => {
+            if (memberId !== userId) {
+              io.to(`user_${memberId}`).emit('new_message', {
+                conversationId: convId,
+                message
+              });
+            }
           });
+        } else {
+          // 私聊消息
+          let targetId = receiverId;
+          if (!targetId) {
+            // 从会话中获取对方ID
+            const conversations = await Conversation.getUserConversations(userId);
+            const conv = conversations.find(c => c.id === convId);
+            if (conv && conv.other_user) {
+              targetId = conv.other_user.id;
+            }
+          }
+
+          // 发送给接收者
+          if (targetId) {
+            io.to(`user_${targetId}`).emit('new_message', {
+              conversationId: convId,
+              message
+            });
+          }
         }
 
         // 回调确认

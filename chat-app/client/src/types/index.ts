@@ -28,11 +28,35 @@ export interface FriendRequest {
   created_at: string
 }
 
+// 群组类型
+export interface Group {
+  id: number
+  name: string
+  avatar: string | null
+  owner_id: number
+  member_count: number
+  conversation_id?: number
+  created_at: string
+  updated_at: string
+  members?: GroupMember[]
+}
+
+// 群成员类型
+export interface GroupMember {
+  id: number
+  user_id: number
+  role: 'owner' | 'member'
+  joined_at: string
+  user: User
+}
+
 // 会话类型
 export interface Conversation {
   id: number
   type: 'private' | 'group'
-  other_user: User | null
+  group_id?: number
+  group?: Group
+  other_user: User | null  // 私聊对方
   last_message: Message | null
   unread_count: number
   updated_at: string
@@ -45,10 +69,13 @@ export interface Message {
   sender_id: number
   sender_nickname?: string
   sender_avatar?: string
-  type: 'text' | 'image' | 'voice'
+  type: 'text' | 'image' | 'voice' | 'file' | 'video' | 'system'
   content: string
   media_url?: string
-  duration?: number
+  thumbnail_url?: string  // 缩略图URL（视频封面）
+  duration?: number       // 语音/视频时长
+  file_name?: string      // 文件名
+  file_size?: number      // 文件大小
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'revoked'
   created_at: string
 }

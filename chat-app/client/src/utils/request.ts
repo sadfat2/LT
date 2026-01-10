@@ -143,3 +143,45 @@ export const uploadFile = (url: string, filePath: string, name = 'file', formDat
     })
   })
 }
+
+// H5 平台上传 Blob（用于录音等）
+export const uploadBlob = async (
+  url: string,
+  blob: Blob,
+  filename: string,
+  formData?: Record<string, any>
+): Promise<ApiResponse> => {
+  const token = getToken()
+
+  uni.showLoading({ title: '上传中...' })
+
+  try {
+    const form = new FormData()
+    form.append('file', blob, filename)
+
+    if (formData) {
+      Object.entries(formData).forEach(([key, value]) => {
+        form.append(key, String(value))
+      })
+    }
+
+    const response = await fetch(BASE_URL + url, {
+      method: 'POST',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: form
+    })
+
+    const data = await response.json() as ApiResponse
+
+    if (response.ok) {
+      return data
+    } else {
+      uni.showToast({ title: data.message || '上传失败', icon: 'none' })
+      throw new Error(data.message || '上传失败')
+    }
+  } finally {
+    uni.hideLoading()
+  }
+}

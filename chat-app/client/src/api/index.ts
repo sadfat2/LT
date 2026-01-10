@@ -5,7 +5,8 @@ import type {
   FriendListResponse,
   FriendRequestsResponse,
   Conversation,
-  Message
+  Message,
+  Group
 } from '../types'
 
 // 认证相关
@@ -81,6 +82,37 @@ export const conversationApi = {
     )
 }
 
+// 群聊相关
+export const groupApi = {
+  // 创建群聊
+  create: (name: string, memberIds: number[]) =>
+    post<{ groupId: number; conversationId: number; group: Group }>('/api/groups', { name, memberIds }),
+
+  // 获取群聊列表
+  getList: () => get<Group[]>('/api/groups'),
+
+  // 获取群详情
+  getDetail: (id: number) => get<Group>(`/api/groups/${id}`),
+
+  // 邀请成员
+  invite: (groupId: number, userIds: number[]) =>
+    post<Group>(`/api/groups/${groupId}/invite`, { userIds }),
+
+  // 退出群聊
+  leave: (groupId: number) => post(`/api/groups/${groupId}/leave`),
+
+  // 更新群信息
+  update: (groupId: number, data: { name?: string; avatar?: string }) =>
+    put<Group>(`/api/groups/${groupId}`, data),
+
+  // 移除成员
+  removeMember: (groupId: number, userId: number) =>
+    del(`/api/groups/${groupId}/members/${userId}`),
+
+  // 解散群聊
+  dissolve: (groupId: number) => del(`/api/groups/${groupId}`)
+}
+
 // 上传相关
 export const uploadApi = {
   // 上传图片
@@ -88,5 +120,13 @@ export const uploadApi = {
 
   // 上传语音
   voice: (filePath: string, duration: number) =>
-    uploadFile('/api/upload/voice', filePath, 'file', { duration })
+    uploadFile('/api/upload/voice', filePath, 'file', { duration }),
+
+  // 上传文件（传递原始文件名）
+  file: (filePath: string, originalName?: string) =>
+    uploadFile('/api/upload/file', filePath, 'file', originalName ? { originalName } : undefined),
+
+  // 上传视频
+  video: (filePath: string, duration?: number) =>
+    uploadFile('/api/upload/video', filePath, 'file', { duration })
 }

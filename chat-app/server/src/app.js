@@ -10,6 +10,7 @@ const userRoutes = require('./routes/user');
 const friendRoutes = require('./routes/friend');
 const conversationRoutes = require('./routes/conversation');
 const uploadRoutes = require('./routes/upload');
+const groupRoutes = require('./routes/group');
 const { errorHandler } = require('./middlewares/errorHandler');
 
 const app = express();
@@ -32,6 +33,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/groups', groupRoutes);
 
 // 健康检查
 app.get('/health', (req, res) => {

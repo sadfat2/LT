@@ -2,11 +2,11 @@ const pool = require('../config/database');
 
 class Message {
   // 创建消息
-  static async create(conversationId, senderId, type, content, mediaUrl = null, duration = null) {
+  static async create(conversationId, senderId, type, content, mediaUrl = null, duration = null, fileName = null, fileSize = null, thumbnailUrl = null) {
     const [result] = await pool.execute(
-      `INSERT INTO messages (conversation_id, sender_id, type, content, media_url, duration)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [conversationId, senderId, type, content, mediaUrl, duration]
+      `INSERT INTO messages (conversation_id, sender_id, type, content, media_url, duration, file_name, file_size, thumbnail_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [conversationId, senderId, type, content, mediaUrl, duration, fileName, fileSize, thumbnailUrl]
     );
     return result.insertId;
   }
@@ -14,7 +14,10 @@ class Message {
   // 根据ID获取消息
   static async findById(id) {
     const [rows] = await pool.execute(
-      `SELECT m.*, u.nickname as sender_nickname, u.avatar as sender_avatar
+      `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.content,
+              m.media_url, m.thumbnail_url, m.duration, m.file_name, m.file_size,
+              m.status, m.created_at,
+              u.nickname as sender_nickname, u.avatar as sender_avatar
        FROM messages m
        JOIN users u ON m.sender_id = u.id
        WHERE m.id = ?`,
@@ -28,7 +31,10 @@ class Message {
     const offset = (page - 1) * limit;
     // 使用 query 而非 execute，因为 LIMIT/OFFSET 在 prepared statement 中有兼容性问题
     const [rows] = await pool.query(
-      `SELECT m.*, u.nickname as sender_nickname, u.avatar as sender_avatar
+      `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.content,
+              m.media_url, m.thumbnail_url, m.duration, m.file_name, m.file_size,
+              m.status, m.created_at,
+              u.nickname as sender_nickname, u.avatar as sender_avatar
        FROM messages m
        JOIN users u ON m.sender_id = u.id
        WHERE m.conversation_id = ?

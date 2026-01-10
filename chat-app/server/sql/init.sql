@@ -48,12 +48,41 @@ CREATE TABLE IF NOT EXISTS friend_requests (
     INDEX idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='好友申请表';
 
+-- 群组表
+CREATE TABLE IF NOT EXISTS `groups` (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL COMMENT '群名称',
+    avatar VARCHAR(255) DEFAULT NULL COMMENT '群头像',
+    owner_id INT NOT NULL COMMENT '群主ID',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_owner (owner_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='群组表';
+
+-- 群成员表
+CREATE TABLE IF NOT EXISTS group_members (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    group_id INT NOT NULL COMMENT '群组ID',
+    user_id INT NOT NULL COMMENT '用户ID',
+    role ENUM('owner', 'member') DEFAULT 'member' COMMENT '成员角色',
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_group_user (group_id, user_id),
+    FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_group (group_id),
+    INDEX idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='群成员表';
+
 -- 会话表
 CREATE TABLE IF NOT EXISTS conversations (
     id INT PRIMARY KEY AUTO_INCREMENT,
     type ENUM('private', 'group') DEFAULT 'private' COMMENT '会话类型',
+    group_id INT DEFAULT NULL COMMENT '群组ID(群聊时使用)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
+    INDEX idx_group (group_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会话表';
 
 -- 会话参与者表
@@ -74,10 +103,13 @@ CREATE TABLE IF NOT EXISTS messages (
     id INT PRIMARY KEY AUTO_INCREMENT,
     conversation_id INT NOT NULL,
     sender_id INT NOT NULL,
-    type ENUM('text', 'image', 'voice') DEFAULT 'text' COMMENT '消息类型',
+    type ENUM('text', 'image', 'voice', 'file', 'video', 'system') DEFAULT 'text' COMMENT '消息类型',
     content TEXT COMMENT '消息内容',
     media_url VARCHAR(255) DEFAULT NULL COMMENT '媒体文件URL',
-    duration INT DEFAULT NULL COMMENT '语音时长(秒)',
+    thumbnail_url VARCHAR(255) DEFAULT NULL COMMENT '缩略图URL(视频封面等)',
+    duration INT DEFAULT NULL COMMENT '语音/视频时长(秒)',
+    file_name VARCHAR(255) DEFAULT NULL COMMENT '文件名',
+    file_size INT DEFAULT NULL COMMENT '文件大小(bytes)',
     status ENUM('sent', 'delivered', 'read', 'revoked') DEFAULT 'sent' COMMENT '消息状态',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
