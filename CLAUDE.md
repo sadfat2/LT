@@ -283,6 +283,28 @@ npm run build:h5        # 构建 H5
 - 需要 **HTTPS** 环境（localhost 除外）
 - 首次使用需授权麦克风权限
 - 复杂网络环境可能需要配置 TURN 服务器
+- **推荐使用耳机**进行通话，可有效避免回声和啸叫
+
+### 音频质量优化
+
+WebRTC 音频采用多层优化策略：
+
+| 优化项 | 说明 |
+|--------|------|
+| 回声消除 | `echoCancellation: true` + Google AEC |
+| 降噪处理 | `noiseSuppression: true` |
+| 自动增益 | `autoGainControl: true` |
+| 高通滤波 | `googHighpassFilter: true`（过滤低频噪音） |
+| Opus FEC | `useinbandfec=1`（前向纠错，抗丢包） |
+| 抖动缓冲 | `jitterBufferTarget: 200ms`（平滑网络波动） |
+| 单声道 | `channelCount: 1`（减少回声） |
+
+音频模式配置位于 `client/src/utils/webrtc.ts`：
+
+```typescript
+// 可选模式: 'optimized' | 'raw' | 'balanced'
+private audioMode: AudioMode = 'optimized'  // 默认启用全部音频处理
+```
 
 ### ICE 服务器配置
 
@@ -295,6 +317,31 @@ const ICE_SERVERS: RTCIceServer[] = [
   // { urls: 'turn:your-turn-server', username: '...', credential: '...' }
 ]
 ```
+
+### 局域网开发测试
+
+支持手机与电脑在同一局域网内测试：
+
+1. **生成 SSL 证书**（WebRTC 需要安全上下文）：
+   ```bash
+   cd chat-app/client
+   mkdir -p cert && cd cert
+   openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes \
+     -subj "/CN=localhost" \
+     -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:YOUR_LAN_IP"
+   ```
+
+2. **后端也需要证书**（复制到 server 目录）：
+   ```bash
+   cp chat-app/client/cert/*.pem chat-app/server/
+   docker-compose up -d --build server
+   ```
+
+3. **访问方式**：
+   - 电脑：`https://localhost:8080`
+   - 手机：`https://YOUR_LAN_IP:8080`（需信任自签名证书）
+
+4. **重要**：所有客户端通过 Vite 代理连接到同一个后端 Socket.io 实例，确保消息同步。
 
 ## 数据库迁移
 

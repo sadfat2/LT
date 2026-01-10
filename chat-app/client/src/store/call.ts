@@ -32,6 +32,7 @@ export const useCallStore = defineStore('call', () => {
   // WebRTC 管理器
   let webrtcManager: WebRTCManager | null = null
   let durationTimer: ReturnType<typeof setInterval> | null = null
+  let statsTimer: ReturnType<typeof setInterval> | null = null  // 音频统计定时器
 
   // 音频元素（用于播放远程音频）
   let remoteAudio: HTMLAudioElement | null = null
@@ -238,6 +239,7 @@ export const useCallStore = defineStore('call', () => {
     webrtcManager?.close()
     webrtcManager = null
     stopDurationTimer()
+    stopStatsMonitor()  // 停止音频质量监控
     resetCallState()
   }
 
@@ -341,6 +343,7 @@ export const useCallStore = defineStore('call', () => {
     webrtcManager?.close()
     webrtcManager = null
     stopDurationTimer()
+    stopStatsMonitor()  // 停止音频质量监控
 
     endReason.value = (data.reason as CallEndReason) || 'hangup'
     status.value = 'ended'
@@ -447,9 +450,53 @@ export const useCallStore = defineStore('call', () => {
     if (!remoteAudio) {
       remoteAudio = new Audio()
       remoteAudio.autoplay = true
+      // 降低音量以减少回声和反馈风险（0.7 = 70%）
+      remoteAudio.volume = 0.7
+
+      // 监听音频播放状态（调试用）
+      remoteAudio.addEventListener('stalled', () => {
+        console.warn('远程音频播放停滞')
+      })
+      remoteAudio.addEventListener('waiting', () => {
+        console.warn('远程音频缓冲中...')
+      })
     }
+
     remoteAudio.srcObject = stream
-    remoteAudio.play().catch(console.error)
+    console.log('[通话] 远程音频音量:', remoteAudio.volume)
+
+    // 配置抖动缓冲（关键优化！减少网络波动导致的卡顿）
+    if (webrtcManager) {
+      // 使用 200ms 抖动缓冲，提高容错能力
+      webrtcManager.configureJitterBuffer(200)
+    }
+
+    // 输出远程音频轨道信息
+    const audioTracks = stream.getAudioTracks()
+    if (audioTracks.length > 0) {
+      const track = audioTracks[0]
+      console.log('[WebRTC] 远程音频轨道:', {
+        label: track.label,
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState,
+        settings: track.getSettings(),
+      })
+    }
+
+    // 确保播放成功
+    remoteAudio.play()
+      .then(() => console.log('远程音频播放开始'))
+      .catch((err) => {
+        console.error('远程音频播放失败:', err)
+        // 某些浏览器需要用户交互后才能播放音频
+        uni.showModal({
+          title: '需要操作',
+          content: '点击确定以启用通话声音',
+          showCancel: false,
+          success: () => remoteAudio?.play().catch(console.error)
+        })
+      })
     // #endif
   }
 
@@ -463,6 +510,7 @@ export const useCallStore = defineStore('call', () => {
       status.value = 'connected'
       startTime.value = Date.now()
       startDurationTimer()
+      startStatsMonitor()  // 开始音频质量监控
     } else if (state === 'failed' || state === 'disconnected') {
       // 连接失败或断开
       if (status.value === 'connected') {
@@ -502,6 +550,48 @@ export const useCallStore = defineStore('call', () => {
     if (durationTimer) {
       clearInterval(durationTimer)
       durationTimer = null
+    }
+  }
+
+  /**
+   * 开始音频统计监控
+   */
+  const startStatsMonitor = () => {
+    if (statsTimer) return
+
+    // 每 3 秒输出一次音频统计
+    statsTimer = setInterval(async () => {
+      if (!webrtcManager) return
+
+      const stats = await webrtcManager.getAudioStats()
+      if (stats) {
+        const lossRate = stats.packetsReceived > 0
+          ? ((stats.packetsLost / (stats.packetsReceived + stats.packetsLost)) * 100).toFixed(2)
+          : '0'
+
+        console.log('[通话质量]', {
+          '丢包率': `${lossRate}%`,
+          '丢包数': stats.packetsLost,
+          '收包数': stats.packetsReceived,
+          '抖动': `${(stats.jitter * 1000).toFixed(1)}ms`,
+          'RTT': `${(stats.roundTripTime * 1000).toFixed(1)}ms`,
+        })
+
+        // 如果丢包率过高，输出警告
+        if (parseFloat(lossRate) > 5) {
+          console.warn('[通话质量] 警告：丢包率过高，可能导致音频质量下降')
+        }
+      }
+    }, 3000)
+  }
+
+  /**
+   * 停止音频统计监控
+   */
+  const stopStatsMonitor = () => {
+    if (statsTimer) {
+      clearInterval(statsTimer)
+      statsTimer = null
     }
   }
 

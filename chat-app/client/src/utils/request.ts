@@ -1,13 +1,30 @@
 import type { ApiResponse } from '../types'
 
 // API 地址配置
-// 开发环境：使用 Vite 代理
+// 开发环境：使用相对路径，通过 Vite 代理连接后端
 // 生产环境：使用香港节点（低延迟接入）
-const BASE_URL = import.meta.env.DEV ? '' : 'https://chat.yourdomain.com'
+const getBaseUrl = (): string => {
+  if (!import.meta.env.DEV) {
+    return 'https://chat.yourdomain.com'
+  }
+  // 开发环境：返回空字符串，使用相对路径
+  // Vite 代理会将 /api 请求转发到后端 localhost:3000
+  // 这样无论是电脑还是手机访问，都通过同一个代理
+  return ''
+}
+const BASE_URL = getBaseUrl()
 
 // CDN 地址配置（静态资源：图片、语音、头像）
+// 开发环境：使用相对路径，通过 Vite 代理
 // 生产环境：使用 Cloudflare CDN（日本节点）
-const CDN_BASE_URL = import.meta.env.DEV ? '' : 'https://cdn.yourdomain.com'
+const getCdnBaseUrl = (): string => {
+  if (!import.meta.env.DEV) {
+    return 'https://cdn.yourdomain.com'
+  }
+  // 开发环境：返回空字符串，静态资源也通过 Vite 代理
+  return ''
+}
+const CDN_BASE_URL = getCdnBaseUrl()
 
 /**
  * 获取静态资源完整 URL（通过 CDN 加速）

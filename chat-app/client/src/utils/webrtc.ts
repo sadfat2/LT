@@ -11,6 +11,47 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun3.l.google.com:19302' },
 ]
 
+// 音频配置模式
+export type AudioMode = 'optimized' | 'raw' | 'balanced'
+
+// 音频约束配置
+const AUDIO_CONSTRAINTS: Record<AudioMode, MediaTrackConstraints> = {
+  // 优化模式：强制启用所有音频处理（推荐用于通话）
+  optimized: {
+    echoCancellation: true,           // 强制启用回声消除
+    noiseSuppression: true,           // 强制启用降噪
+    autoGainControl: true,            // 强制启用自动增益
+    sampleRate: { ideal: 48000 },
+    channelCount: { exact: 1 },       // 强制单声道（减少回声）
+    sampleSize: { ideal: 16 },
+    latency: { ideal: 0.01 },
+    // Google Chrome 高级音频处理（实验性但广泛支持）
+    // @ts-ignore - 这些是 Chrome 特有的约束
+    googEchoCancellation: true,
+    googAutoGainControl: true,
+    googNoiseSuppression: true,
+    googHighpassFilter: true,         // 高通滤波器，过滤低频噪音
+    googTypingNoiseDetection: true,   // 检测并抑制键盘敲击声
+  } as MediaTrackConstraints,
+  // 原始模式：禁用浏览器音频处理（用于音乐等场景）
+  raw: {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+    sampleRate: { ideal: 48000 },
+    channelCount: { ideal: 1 },
+  },
+  // 平衡模式：仅启用回声消除和降噪
+  balanced: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: false,           // 不自动调节增益
+    sampleRate: { ideal: 48000 },
+    channelCount: { exact: 1 },
+    latency: { ideal: 0.02 },
+  },
+}
+
 // 事件回调类型
 export interface WebRTCCallbacks {
   onLocalStream?: (stream: MediaStream) => void
@@ -26,6 +67,102 @@ export class WebRTCManager {
   private remoteStream: MediaStream | null = null
   private callbacks: WebRTCCallbacks = {}
   private isMuted: boolean = false
+  private audioMode: AudioMode = 'optimized' // 启用回声消除和降噪
+
+  /**
+   * 设置音频模式
+   * @param mode 'optimized' | 'raw' | 'balanced'
+   */
+  setAudioMode(mode: AudioMode): void {
+    this.audioMode = mode
+    console.log('[WebRTC] 音频模式设置为:', mode)
+  }
+
+  /**
+   * 优化 Opus 编码参数的 SDP 修改
+   * 启用前向纠错 (FEC) 和其他音质优化
+   */
+  private mungeOpusSDP(sdp: string): string {
+    // 查找 Opus 编解码器的 fmtp 行并添加优化参数
+    // useinbandfec=1: 启用前向纠错（关键！解决丢包导致的卡顿）
+    // usedtx=0: 禁用不连续传输（保持音频流稳定）
+    // maxplaybackrate=48000: 最大播放率
+    // stereo=0: 单声道
+    // maxaveragebitrate=24000: 适中比特率（平衡质量和网络）
+
+    // 更灵活的正则表达式，匹配各种 fmtp 格式
+    const opusFmtpRegex = /a=fmtp:111\s+(.*?)(\r?\n)/g
+
+    const optimizedSdp = sdp.replace(opusFmtpRegex, (match, params, lineEnd) => {
+      // 检查是否已经有这些参数，避免重复添加
+      let newParams = params
+      if (!params.includes('useinbandfec')) {
+        newParams += ';useinbandfec=1'
+      }
+      if (!params.includes('usedtx')) {
+        newParams += ';usedtx=0'
+      }
+      if (!params.includes('maxplaybackrate')) {
+        newParams += ';maxplaybackrate=48000'
+      }
+      if (!params.includes('stereo')) {
+        newParams += ';stereo=0'
+      }
+      if (!params.includes('maxaveragebitrate')) {
+        newParams += ';maxaveragebitrate=64000'  // 提高到 64kbps
+      }
+
+      console.log('[WebRTC] Opus SDP 优化:', {
+        original: params,
+        optimized: newParams,
+      })
+
+      return `a=fmtp:111 ${newParams}${lineEnd}`
+    })
+
+    // 如果没有找到 fmtp:111，记录警告
+    if (optimizedSdp === sdp) {
+      console.warn('[WebRTC] 未找到 Opus fmtp 行，SDP 未被优化')
+      console.log('[WebRTC] SDP 内容:', sdp.substring(0, 500))
+    }
+
+    return optimizedSdp
+  }
+
+  /**
+   * 优化音频编码参数
+   * 设置比特率和优先级
+   */
+  private async optimizeAudioCodec(): Promise<void> {
+    const senders = this.peerConnection?.getSenders()
+    if (!senders) return
+
+    for (const sender of senders) {
+      if (sender.track?.kind === 'audio') {
+        try {
+          const params = sender.getParameters()
+          if (params.encodings && params.encodings.length > 0) {
+            // 提高比特率（64kbps 提供更好的音质）
+            params.encodings[0].maxBitrate = 64000
+            // 设置高优先级
+            params.encodings[0].priority = 'high'
+            // 设置网络优先级（如果支持）
+            // @ts-ignore - networkPriority 是较新的 API
+            if ('networkPriority' in params.encodings[0]) {
+              params.encodings[0].networkPriority = 'high'
+            }
+            await sender.setParameters(params)
+            console.log('[WebRTC] 编码参数已优化:', {
+              maxBitrate: params.encodings[0].maxBitrate,
+              priority: params.encodings[0].priority,
+            })
+          }
+        } catch (error) {
+          console.warn('优化音频编码参数失败:', error)
+        }
+      }
+    }
+  }
 
   /**
    * 检查浏览器是否支持 WebRTC
@@ -40,17 +177,27 @@ export class WebRTCManager {
 
   /**
    * 请求麦克风权限并获取音频流
+   * @param mode 可选的音频模式覆盖
    */
-  async requestAudioStream(): Promise<MediaStream> {
+  async requestAudioStream(mode?: AudioMode): Promise<MediaStream> {
+    const audioMode = mode || this.audioMode
+    const constraints = AUDIO_CONSTRAINTS[audioMode]
+
+    console.log('[WebRTC] 使用音频模式:', audioMode, constraints)
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: constraints,
         video: false,
       })
+
+      // 记录实际获取的音频轨道设置
+      const audioTrack = stream.getAudioTracks()[0]
+      if (audioTrack) {
+        const settings = audioTrack.getSettings()
+        console.log('[WebRTC] 实际音频设置:', settings)
+      }
+
       this.localStream = stream
       this.callbacks.onLocalStream?.(stream)
       return stream
@@ -138,8 +285,16 @@ export class WebRTCManager {
       offerToReceiveVideo: false,
     })
 
+    // 先设置原始 SDP（现代浏览器不允许修改后再设置）
     await this.peerConnection.setLocalDescription(offer)
-    return offer
+
+    // 优化音频编码参数
+    await this.optimizeAudioCodec()
+
+    // 返回优化后的 SDP 用于发送给对方
+    // 对方在 setRemoteDescription 时会应用这些优化参数
+    const optimizedSdp = this.mungeOpusSDP(offer.sdp || '')
+    return { ...offer, sdp: optimizedSdp }
   }
 
   /**
@@ -150,12 +305,20 @@ export class WebRTCManager {
       throw new Error('PeerConnection 未初始化')
     }
 
+    // 设置远程描述（对方发来的 Offer 可能包含优化参数）
     await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
 
     const answer = await this.peerConnection.createAnswer()
+
+    // 先设置原始 SDP（现代浏览器不允许修改后再设置）
     await this.peerConnection.setLocalDescription(answer)
 
-    return answer
+    // 优化音频编码参数
+    await this.optimizeAudioCodec()
+
+    // 返回优化后的 SDP 用于发送给对方
+    const optimizedSdp = this.mungeOpusSDP(answer.sdp || '')
+    return { ...answer, sdp: optimizedSdp }
   }
 
   /**
@@ -237,6 +400,77 @@ export class WebRTCManager {
    */
   getConnectionState(): RTCPeerConnectionState | null {
     return this.peerConnection?.connectionState || null
+  }
+
+  /**
+   * 获取 RTP 接收器列表
+   * 用于配置抖动缓冲等参数
+   */
+  getReceivers(): RTCRtpReceiver[] {
+    return this.peerConnection?.getReceivers() || []
+  }
+
+  /**
+   * 配置抖动缓冲（用于减少网络波动导致的音频中断）
+   * @param targetMs 目标抖动缓冲延迟（毫秒）
+   */
+  configureJitterBuffer(targetMs: number = 100): void {
+    const receivers = this.getReceivers()
+    receivers.forEach((receiver) => {
+      if (receiver.track?.kind === 'audio') {
+        // jitterBufferTarget 是较新的 API，单位是毫秒
+        // @ts-ignore
+        if ('jitterBufferTarget' in receiver) {
+          // @ts-ignore
+          receiver.jitterBufferTarget = targetMs
+          console.log(`已设置抖动缓冲目标: ${targetMs}ms`)
+        }
+      }
+    })
+  }
+
+  /**
+   * 获取音频质量统计信息
+   * 用于监控和调试通话质量
+   */
+  async getAudioStats(): Promise<{
+    jitter: number
+    packetsLost: number
+    packetsReceived: number
+    roundTripTime: number
+    audioLevel: number
+  } | null> {
+    if (!this.peerConnection) return null
+
+    try {
+      const stats = await this.peerConnection.getStats()
+      const result = {
+        jitter: 0,
+        packetsLost: 0,
+        packetsReceived: 0,
+        roundTripTime: 0,
+        audioLevel: 0,
+      }
+
+      stats.forEach((report) => {
+        // 入站 RTP 统计（接收的音频）
+        if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+          result.jitter = report.jitter || 0
+          result.packetsLost = report.packetsLost || 0
+          result.packetsReceived = report.packetsReceived || 0
+          result.audioLevel = report.audioLevel || 0
+        }
+        // 连接候选对统计（RTT）
+        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+          result.roundTripTime = report.currentRoundTripTime || 0
+        }
+      })
+
+      return result
+    } catch (error) {
+      console.warn('获取音频统计失败:', error)
+      return null
+    }
   }
 
   /**

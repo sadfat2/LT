@@ -1,5 +1,7 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const cors = require('cors');
 const path = require('path');
 
@@ -14,7 +16,28 @@ const groupRoutes = require('./routes/group');
 const { errorHandler } = require('./middlewares/errorHandler');
 
 const app = express();
-const server = http.createServer(app);
+
+// 检查是否有 SSL 证书（用于局域网 HTTPS 访问）
+const certPath = path.join(__dirname, '..');
+const keyPath = path.join(certPath, 'key.pem');
+const certFilePath = path.join(certPath, 'cert.pem');
+const hasCert = fs.existsSync(keyPath) && fs.existsSync(certFilePath);
+
+let server;
+let httpsServer;
+
+if (hasCert) {
+  // 同时启动 HTTP 和 HTTPS 服务器
+  server = http.createServer(app);
+  httpsServer = https.createServer({
+    key: fs.readFileSync(keyPath),
+    cert: fs.readFileSync(certFilePath)
+  }, app);
+  console.log('已加载 SSL 证书，将启动 HTTPS 服务');
+} else {
+  // 只启动 HTTP 服务器
+  server = http.createServer(app);
+}
 
 // 中间件
 app.use(cors({
@@ -43,13 +66,22 @@ app.get('/health', (req, res) => {
 // 错误处理
 app.use(errorHandler);
 
-// 初始化 Socket.io
+// 初始化 Socket.io（只在 HTTP 服务器上）
+// 所有客户端都通过 Vite 代理连接到 HTTP 3000，确保使用同一个 Socket.io 实例
 initSocket(server);
 
 // 启动服务器
 const PORT = config.port || 3000;
+const HTTPS_PORT = 3443;
+
 server.listen(PORT, () => {
-  console.log(`服务器运行在端口 ${PORT}`);
+  console.log(`HTTP 服务器运行在端口 ${PORT}`);
 });
 
-module.exports = { app, server };
+if (httpsServer) {
+  httpsServer.listen(HTTPS_PORT, () => {
+    console.log(`HTTPS 服务器运行在端口 ${HTTPS_PORT}`);
+  });
+}
+
+module.exports = { app, server, httpsServer };

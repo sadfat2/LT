@@ -38,6 +38,7 @@ services:
     restart: always
     ports:
       - "3000:3000"
+      - "3443:3443"
     environment:
       NODE_ENV: development
       DB_HOST: mysql
