@@ -1,4 +1,11 @@
 {
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "CallModal": "@/components/call/CallModal.vue",
+      "CallScreen": "@/components/call/CallScreen.vue"
+    }
+  },
   "pages": [
     {
       "path": "pages/index/index",

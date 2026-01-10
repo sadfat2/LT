@@ -6,6 +6,7 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
 const Group = require('../models/Group');
+const { initCallHandlers } = require('./call');
 
 let io;
 
@@ -68,6 +69,9 @@ const initSocket = (server) => {
 
     // 通知好友上线
     socket.broadcast.emit('user_online', { userId });
+
+    // 初始化语音通话处理
+    initCallHandlers(socket, io);
 
     // 发送消息
     socket.on('send_message', async (data, callback) => {

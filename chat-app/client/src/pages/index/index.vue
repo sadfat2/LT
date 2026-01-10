@@ -39,20 +39,26 @@
         <text class="empty-text">暂无消息</text>
       </view>
     </scroll-view>
+
+    <!-- 通话组件 -->
+    <CallModal />
+    <CallScreen />
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useConversationStore } from '../../store/conversation'
 import { useUserStore } from '../../store/user'
 import { useFriendStore } from '../../store/friend'
+import { useCallStore } from '../../store/call'
 import type { Conversation, Message } from '../../types'
 
 const conversationStore = useConversationStore()
 const userStore = useUserStore()
 const friendStore = useFriendStore()
+const callStore = useCallStore()
 
 // 获取好友显示名称（备注优先）
 const getDisplayName = (userId?: number): string => {
@@ -72,6 +78,14 @@ onMounted(() => {
 
   // 初始化 socket 事件监听
   conversationStore.initSocketListeners()
+
+  // 初始化通话事件监听
+  callStore.initCallListeners()
+})
+
+onUnmounted(() => {
+  // 移除通话事件监听
+  callStore.removeCallListeners()
 })
 
 onShow(() => {

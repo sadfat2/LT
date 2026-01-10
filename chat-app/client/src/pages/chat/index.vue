@@ -28,8 +28,13 @@
           {{ formatMessageTime(message.created_at) }}
         </view>
 
+        <!-- 系统消息（通话记录等） -->
+        <view v-if="message.type === 'system'" class="system-message">
+          <text class="system-message-text">{{ message.content }}</text>
+        </view>
+
         <!-- 消息气泡 -->
-        <view class="message-content">
+        <view v-else class="message-content">
           <!-- 接收者头像（左侧） -->
           <image
             v-if="message.sender_id !== currentUserId"
@@ -130,7 +135,7 @@
 
         <!-- 消息状态 -->
         <view
-          v-if="message.sender_id === currentUserId"
+          v-if="message.sender_id === currentUserId && message.type !== 'system'"
           class="message-status"
         >
           <text v-if="message.status === 'sending'" class="status sending">发送中</text>
@@ -217,8 +222,19 @@
           </view>
           <text class="panel-text">文件</text>
         </view>
+        <!-- 语音通话（仅私聊） -->
+        <view v-if="conversationType === 'private'" class="panel-item" @click="startVoiceCall">
+          <view class="panel-icon call-icon">
+            <text>📞</text>
+          </view>
+          <text class="panel-text">语音通话</text>
+        </view>
       </view>
     </view>
+
+    <!-- 通话组件 -->
+    <CallModal />
+    <CallScreen />
   </view>
 </template>
 
@@ -229,6 +245,7 @@ import { useConversationStore } from '../../store/conversation'
 import { useSocketStore } from '../../store/socket'
 import { useUserStore } from '../../store/user'
 import { useGroupStore } from '../../store/group'
+import { useCallStore } from '../../store/call'
 import { uploadApi } from '../../api'
 import { uploadBlob } from '../../utils/request'
 import { H5Recorder, getBlobExtension } from '../../utils/h5Recorder'
@@ -238,6 +255,7 @@ const conversationStore = useConversationStore()
 const socketStore = useSocketStore()
 const userStore = useUserStore()
 const groupStore = useGroupStore()
+const callStore = useCallStore()
 
 const conversationId = ref<number>(0)
 const otherUserId = ref<number>(0)
@@ -346,6 +364,9 @@ onMounted(async () => {
     playingId.value = null
   }
   // #endif
+
+  // 初始化通话事件监听
+  callStore.initCallListeners()
 })
 
 onUnmounted(() => {
@@ -353,6 +374,9 @@ onUnmounted(() => {
   socketStore.off('message_read_ack', handleReadAck)
   socketStore.off('message_revoked', handleRevoked)
   socketStore.off('user_typing', handleTyping)
+
+  // 移除通话事件监听
+  callStore.removeCallListeners()
 
   // #ifndef H5
   if (innerAudioContext) {
@@ -586,6 +610,26 @@ const toggleVoice = async () => {
 
 const toggleMore = () => {
   showMore.value = !showMore.value
+}
+
+// 发起语音通话
+const startVoiceCall = async () => {
+  if (conversationType.value !== 'private' || !otherUser.value) {
+    uni.showToast({ title: '暂不支持群聊语音通话', icon: 'none' })
+    return
+  }
+
+  showMore.value = false
+
+  const success = await callStore.initiateCall(otherUserId.value, {
+    id: otherUser.value.id,
+    nickname: otherUser.value.nickname,
+    avatar: otherUser.value.avatar
+  })
+
+  if (!success) {
+    // 错误信息已在 callStore 中显示
+  }
 }
 
 const startRecord = async () => {
@@ -1338,6 +1382,21 @@ const scrollToBottom = () => {
 .time-divider {
   text-align: center;
   padding: 20rpx 0;
+  font-size: 24rpx;
+  color: var(--text-light);
+}
+
+.system-message {
+  display: flex;
+  justify-content: center;
+  padding: 16rpx 0;
+}
+
+.system-message-text {
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8rpx;
+  padding: 8rpx 20rpx;
   font-size: 24rpx;
   color: var(--text-light);
 }

@@ -104,3 +104,39 @@ export interface FriendRequestsResponse {
   received: FriendRequest[]
   sent: FriendRequest[]
 }
+
+// ==================== 通话相关类型 ====================
+
+// 通话状态
+export type CallStatus = 'idle' | 'calling' | 'ringing' | 'connecting' | 'connected' | 'ended'
+
+// 通话结束原因
+export type CallEndReason = 'hangup' | 'rejected' | 'timeout' | 'cancelled' | 'busy' | 'offline' | 'error' | 'disconnected'
+
+// 通话对方信息
+export interface CallPeerInfo {
+  id: number
+  nickname: string
+  avatar: string | null
+}
+
+// 来电事件数据
+export interface IncomingCallData {
+  callId: string
+  callerId: number
+  callerInfo: CallPeerInfo
+}
+
+// 通话接听事件数据
+export interface CallAcceptedData {
+  callId: string
+  receiverInfo: CallPeerInfo
+}
+
+// 通话结束事件数据
+export interface CallEndedData {
+  callId: string
+  duration: number
+  endedBy: number
+  reason?: CallEndReason
+}
