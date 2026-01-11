@@ -40,6 +40,39 @@ router.post('/private', authMiddleware, async (req, res, next) => {
   }
 });
 
+// 综合搜索（必须放在 /:id 路由之前）
+router.get('/search/all', authMiddleware, async (req, res, next) => {
+  try {
+    const { keyword } = req.query;
+
+    if (!keyword || keyword.trim().length === 0) {
+      return res.json({
+        code: 200,
+        data: { friends: [], groups: [], messages: [] }
+      });
+    }
+
+    const searchKeyword = keyword.trim();
+    const userId = req.user.id;
+
+    // 1. 搜索好友
+    const friends = await Conversation.searchFriends(userId, searchKeyword);
+
+    // 2. 搜索群聊
+    const groups = await Conversation.searchGroups(userId, searchKeyword);
+
+    // 3. 搜索消息
+    const messages = await Message.search(userId, searchKeyword, 20);
+
+    res.json({
+      code: 200,
+      data: { friends, groups, messages }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // 删除会话
 router.delete('/:id', authMiddleware, async (req, res, next) => {
   try {

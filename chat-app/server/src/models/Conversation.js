@@ -181,6 +181,46 @@ class Conversation {
       [conversationId, userId]
     );
   }
+
+  // 搜索好友
+  static async searchFriends(userId, keyword) {
+    const searchKeyword = `%${keyword}%`;
+    const [rows] = await pool.query(
+      `SELECT u.id, u.account, u.nickname, u.avatar, f.remark
+       FROM friendships f
+       JOIN users u ON f.friend_id = u.id
+       WHERE f.user_id = ?
+       AND (u.nickname LIKE ? OR u.account LIKE ? OR f.remark LIKE ?)
+       LIMIT 10`,
+      [userId, searchKeyword, searchKeyword, searchKeyword]
+    );
+    return rows;
+  }
+
+  // 搜索群聊（按群名或群成员昵称）
+  static async searchGroups(userId, keyword) {
+    const searchKeyword = `%${keyword}%`;
+    const [rows] = await pool.query(
+      `SELECT DISTINCT g.id, g.name, g.avatar, g.owner_id,
+              (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count,
+              c.id as conversation_id,
+              u.nickname as matched_member_nickname,
+              u.avatar as matched_member_avatar,
+              CASE
+                WHEN g.name LIKE ? THEN 'group_name'
+                ELSE 'member'
+              END as match_type
+       FROM \`groups\` g
+       JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
+       JOIN conversations c ON c.group_id = g.id
+       LEFT JOIN group_members gm2 ON g.id = gm2.group_id
+       LEFT JOIN users u ON gm2.user_id = u.id
+       WHERE g.name LIKE ? OR u.nickname LIKE ? OR u.account LIKE ?
+       LIMIT 10`,
+      [searchKeyword, userId, searchKeyword, searchKeyword, searchKeyword]
+    );
+    return rows;
+  }
 }
 
 module.exports = Conversation;

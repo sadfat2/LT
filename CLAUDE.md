@@ -155,6 +155,7 @@ npm run build:h5        # 构建 H5
 ### 会话
 - `GET /api/conversations` - 会话列表
 - `POST /api/conversations/private` - 创建私聊会话
+- `GET /api/conversations/search/all?keyword=` - 综合搜索（好友+群聊+消息）
 - `GET /api/conversations/:id/messages` - 获取会话消息
 
 ### 群聊
@@ -220,6 +221,89 @@ npm run build:h5        # 构建 H5
 
 ### 条件编译
 使用 `#ifdef H5` / `#ifndef H5` 区分平台代码
+
+## 搜索功能
+
+### 功能概述
+
+支持在消息页面进行综合搜索，搜索结果按以下顺序显示：
+
+1. **好友** - 匹配昵称、账号或备注
+2. **群聊** - 匹配群名称或群成员昵称/账号
+3. **聊天记录** - 匹配消息内容
+
+### API 端点
+
+```
+GET /api/conversations/search/all?keyword=搜索关键词
+```
+
+### 返回数据结构
+
+```typescript
+{
+  code: 200,
+  data: {
+    // 好友搜索结果
+    friends: [{
+      id: number,
+      account: string,
+      nickname: string,
+      avatar: string | null,
+      remark: string | null
+    }],
+    // 群聊搜索结果
+    groups: [{
+      id: number,
+      name: string,
+      avatar: string | null,
+      owner_id: number,
+      member_count: number,
+      conversation_id: number,
+      matched_member_nickname?: string,  // 匹配的成员昵称（当 match_type='member' 时）
+      matched_member_avatar?: string | null,
+      match_type: 'group_name' | 'member'  // 匹配类型
+    }],
+    // 消息搜索结果
+    messages: [{
+      id: number,
+      conversation_id: number,
+      sender_id: number,
+      type: string,
+      content: string,
+      created_at: string,
+      sender_nickname: string,
+      sender_avatar: string | null,
+      conversation_type: 'private' | 'group',
+      // 私聊信息
+      other_user_id?: number,
+      other_user_nickname?: string,
+      other_user_avatar?: string | null,
+      // 群聊信息
+      group_id?: number,
+      group_name?: string,
+      group_avatar?: string | null
+    }]
+  }
+}
+```
+
+### 搜索逻辑
+
+| 搜索类型 | 搜索范围 | 匹配字段 |
+|----------|----------|----------|
+| 好友 | 当前用户的好友列表 | nickname, account, remark |
+| 群聊 | 当前用户加入的群聊 | group.name, member.nickname, member.account |
+| 消息 | 当前用户参与的会话 | message.content (仅 text 类型) |
+
+### 前端实现
+
+搜索入口位于消息列表页面 (`client/src/pages/index/index.vue`)：
+
+- 点击搜索栏进入搜索模式
+- 输入防抖 300ms 后自动搜索
+- 搜索结果分类显示
+- 点击结果跳转到对应会话
 
 ## 语音通话功能
 

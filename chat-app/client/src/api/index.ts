@@ -6,7 +6,8 @@ import type {
   FriendRequestsResponse,
   Conversation,
   Message,
-  Group
+  Group,
+  SearchAllResult
 } from '../types'
 
 // 认证相关
@@ -79,7 +80,11 @@ export const conversationApi = {
     get<{ messages: Message[]; page: number; limit: number; hasMore: boolean }>(
       `/api/conversations/${id}/messages`,
       { page, limit }
-    )
+    ),
+
+  // 综合搜索（好友+群聊+消息）
+  searchAll: (keyword: string) =>
+    get<SearchAllResult>('/api/conversations/search/all', { keyword })
 }
 
 // 群聊相关

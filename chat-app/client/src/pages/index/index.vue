@@ -18,14 +18,127 @@
 
     <!-- 搜索栏 -->
     <view class="search-section">
-      <view class="search-bar" @click="showSearchTip">
+      <view v-if="!searchMode" class="search-bar" @click="enterSearchMode">
         <text class="search-icon">🔍</text>
         <text class="search-placeholder">搜索</text>
+      </view>
+      <view v-else class="search-bar active">
+        <text class="search-icon">🔍</text>
+        <input
+          ref="searchInput"
+          v-model="searchKeyword"
+          class="search-input"
+          type="text"
+          placeholder="搜索聊天记录"
+          focus
+          confirm-type="search"
+          @input="onSearchInput"
+          @confirm="doSearch"
+        />
+        <text v-if="searchKeyword" class="clear-icon" @click="clearSearch">✕</text>
+        <text class="cancel-btn" @click="exitSearchMode">取消</text>
+      </view>
+    </view>
+
+    <!-- 搜索结果 -->
+    <view v-if="searchMode" class="search-results">
+      <view v-if="searching" class="search-loading">
+        <view class="loading-spinner"></view>
+        <text class="loading-text">搜索中...</text>
+      </view>
+      <view v-else-if="searchKeyword && !hasSearchResults()" class="search-empty">
+        <text class="empty-icon">🔍</text>
+        <text class="empty-text">未找到相关内容</text>
+      </view>
+      <scroll-view v-else-if="hasSearchResults()" scroll-y class="search-result-list">
+        <!-- 好友搜索结果 -->
+        <view v-if="searchFriends.length > 0" class="search-section">
+          <view class="section-header">
+            <text class="section-title">好友</text>
+          </view>
+          <view
+            v-for="friend in searchFriends"
+            :key="'friend-' + friend.id"
+            class="search-result-item"
+            @click="goToFriendChat(friend)"
+          >
+            <image
+              class="result-avatar"
+              :src="friend.avatar || '/static/images/default-avatar.svg'"
+              mode="aspectFill"
+            />
+            <view class="result-content">
+              <view class="result-header">
+                <text class="result-name">{{ friend.remark || friend.nickname }}</text>
+              </view>
+              <text class="result-sub">账号: {{ friend.account }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 群聊搜索结果 -->
+        <view v-if="searchGroups.length > 0" class="search-section">
+          <view class="section-header">
+            <text class="section-title">群聊</text>
+          </view>
+          <view
+            v-for="group in searchGroups"
+            :key="'group-' + group.id + '-' + (group.matched_member_nickname || '')"
+            class="search-result-item"
+            @click="goToGroupChat(group)"
+          >
+            <image
+              class="result-avatar"
+              :src="group.match_type === 'member' ? (group.matched_member_avatar || '/static/images/default-avatar.svg') : (group.avatar || '/static/images/default-avatar.svg')"
+              mode="aspectFill"
+            />
+            <view class="result-content">
+              <view class="result-header">
+                <text class="result-name">{{ group.name }}</text>
+                <text class="result-badge">{{ group.member_count }}人</text>
+              </view>
+              <text class="result-sub" v-if="group.match_type === 'member'">
+                包含: {{ group.matched_member_nickname }}
+              </text>
+              <text class="result-sub" v-else>群聊名称匹配</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 聊天记录搜索结果 -->
+        <view v-if="searchMessages.length > 0" class="search-section">
+          <view class="section-header">
+            <text class="section-title">聊天记录</text>
+          </view>
+          <view
+            v-for="result in searchMessages"
+            :key="'msg-' + result.id"
+            class="search-result-item"
+            @click="goToMessage(result)"
+          >
+            <image
+              class="result-avatar"
+              :src="result.conversation_type === 'group' ? (result.group_avatar || '/static/images/default-avatar.svg') : (result.other_user_avatar || '/static/images/default-avatar.svg')"
+              mode="aspectFill"
+            />
+            <view class="result-content">
+              <view class="result-header">
+                <text class="result-name">{{ getMessageResultName(result) }}</text>
+                <text class="result-time">{{ formatTime(result.created_at) }}</text>
+              </view>
+              <text class="result-message">{{ highlightKeyword(result.content) }}</text>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+      <view v-else class="search-hint">
+        <text class="hint-text">输入关键词搜索好友、群聊、聊天记录</text>
       </view>
     </view>
 
     <!-- 会话列表 -->
     <scroll-view
+      v-if="!searchMode"
       scroll-y
       class="conversation-list"
       :refresher-enabled="true"
@@ -133,9 +246,10 @@ import { useUserStore } from '../../store/user'
 import { useFriendStore } from '../../store/friend'
 import { useCallStore } from '../../store/call'
 import { useSocketStore } from '../../store/socket'
+import { conversationApi } from '../../api'
 import CustomTabBar from '../../components/CustomTabBar.vue'
 import ConfirmModal from '../../components/ConfirmModal.vue'
-import type { Conversation, Message } from '../../types'
+import type { Conversation, Message, SearchFriendResult, SearchGroupResult, SearchMessageResult } from '../../types'
 
 const conversationStore = useConversationStore()
 const userStore = useUserStore()
@@ -174,6 +288,15 @@ const refreshing = ref(false)
 const conversations = ref<Conversation[]>([])
 const showDeleteModal = ref(false)
 const conversationToDelete = ref<Conversation | null>(null)
+
+// 搜索相关
+const searchMode = ref(false)
+const searchKeyword = ref('')
+const searchFriends = ref<SearchFriendResult[]>([])
+const searchGroups = ref<SearchGroupResult[]>([])
+const searchMessages = ref<SearchMessageResult[]>([])
+const searching = ref(false)
+let searchTimer: number | null = null
 
 onMounted(() => {
   if (!userStore.isLoggedIn) {
@@ -267,8 +390,126 @@ const confirmDeleteConversation = async () => {
   }
 }
 
-const showSearchTip = () => {
-  uni.showToast({ title: '搜索功能开发中', icon: 'none' })
+// 搜索功能
+const enterSearchMode = () => {
+  searchMode.value = true
+  searchKeyword.value = ''
+  clearSearchResults()
+}
+
+const exitSearchMode = () => {
+  searchMode.value = false
+  searchKeyword.value = ''
+  clearSearchResults()
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
+}
+
+const clearSearch = () => {
+  searchKeyword.value = ''
+  clearSearchResults()
+}
+
+const clearSearchResults = () => {
+  searchFriends.value = []
+  searchGroups.value = []
+  searchMessages.value = []
+}
+
+const hasSearchResults = () => {
+  return searchFriends.value.length > 0 || searchGroups.value.length > 0 || searchMessages.value.length > 0
+}
+
+const onSearchInput = () => {
+  // 防抖搜索
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+  }
+  searchTimer = setTimeout(() => {
+    doSearch()
+  }, 300) as unknown as number
+}
+
+const doSearch = async () => {
+  const keyword = searchKeyword.value.trim()
+  if (!keyword) {
+    clearSearchResults()
+    return
+  }
+
+  searching.value = true
+  try {
+    const res = await conversationApi.searchAll(keyword)
+    searchFriends.value = res.data.friends
+    searchGroups.value = res.data.groups
+    searchMessages.value = res.data.messages
+  } catch (error) {
+    console.error('搜索失败:', error)
+    uni.showToast({ title: '搜索失败', icon: 'none' })
+  } finally {
+    searching.value = false
+  }
+}
+
+// 点击好友搜索结果
+const goToFriendChat = async (friend: SearchFriendResult) => {
+  exitSearchMode()
+  try {
+    const res = await conversationApi.createPrivate(friend.id)
+    const displayName = friend.remark || friend.nickname
+    uni.navigateTo({
+      url: `/pages/chat/index?conversationId=${res.data.conversationId}&userId=${friend.id}&nickname=${encodeURIComponent(displayName)}&avatar=${encodeURIComponent(friend.avatar || '')}`
+    })
+  } catch (error) {
+    uni.showToast({ title: '打开会话失败', icon: 'none' })
+  }
+}
+
+// 点击群聊搜索结果
+const goToGroupChat = (group: SearchGroupResult) => {
+  exitSearchMode()
+  uni.navigateTo({
+    url: `/pages/chat/index?conversationId=${group.conversation_id}&type=group&groupId=${group.id}`
+  })
+}
+
+// 点击消息搜索结果
+const goToMessage = (result: SearchMessageResult) => {
+  exitSearchMode()
+
+  if (result.conversation_type === 'group') {
+    uni.navigateTo({
+      url: `/pages/chat/index?conversationId=${result.conversation_id}&type=group&groupId=${result.group_id}`
+    })
+  } else {
+    const displayName = getMessageResultName(result)
+    uni.navigateTo({
+      url: `/pages/chat/index?conversationId=${result.conversation_id}&userId=${result.other_user_id}&nickname=${encodeURIComponent(displayName)}&avatar=${encodeURIComponent(result.other_user_avatar || '')}`
+    })
+  }
+}
+
+const getMessageResultName = (result: SearchMessageResult): string => {
+  if (result.conversation_type === 'group') {
+    return result.group_name || '群聊'
+  }
+  const friend = friendStore.friends.find(f => f.id === result.other_user_id)
+  return friend?.remark || result.other_user_nickname || '未知用户'
+}
+
+const highlightKeyword = (content: string): string => {
+  const keyword = searchKeyword.value.trim()
+  const index = content.toLowerCase().indexOf(keyword.toLowerCase())
+  if (index === -1) return content.slice(0, 50)
+
+  const start = Math.max(0, index - 15)
+  const end = Math.min(content.length, index + keyword.length + 35)
+  let result = content.slice(start, end)
+  if (start > 0) result = '...' + result
+  if (end < content.length) result = result + '...'
+  return result
 }
 
 const getMessagePreview = (conversation: Conversation) => {
@@ -457,6 +698,176 @@ const formatTime = (time?: string) => {
   flex: 1;
   font-size: var(--text-base);
   color: var(--text-muted);
+}
+
+.search-bar.active {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 4rpx rgba(168, 85, 247, 0.15);
+}
+
+.search-input {
+  flex: 1;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.clear-icon {
+  font-size: 24rpx;
+  color: var(--text-muted);
+  padding: 8rpx;
+  margin-right: 8rpx;
+}
+
+.cancel-btn {
+  font-size: var(--text-sm);
+  color: var(--accent-primary);
+  padding-left: 16rpx;
+}
+
+/* 搜索结果 */
+.search-results {
+  position: relative;
+  z-index: 5;
+  height: calc(100vh - 280rpx - env(safe-area-inset-top) - 110rpx - env(safe-area-inset-bottom));
+  padding: 0 32rpx;
+}
+
+.search-loading,
+.search-empty,
+.search-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80rpx 40rpx;
+}
+
+.search-loading .loading-spinner {
+  width: 48rpx;
+  height: 48rpx;
+  border: 4rpx solid var(--border-subtle);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 20rpx;
+}
+
+.search-loading .loading-text {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.search-empty .empty-icon {
+  font-size: 80rpx;
+  opacity: 0.3;
+  margin-bottom: 20rpx;
+}
+
+.search-empty .empty-text {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.search-hint .hint-text {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.search-result-list {
+  height: 100%;
+}
+
+.search-section {
+  margin-bottom: 24rpx;
+}
+
+.section-header {
+  padding: 16rpx 8rpx;
+  margin-bottom: 8rpx;
+}
+
+.section-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 2rpx;
+}
+
+.result-sub {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.result-badge {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--bg-glass);
+  padding: 4rpx 12rpx;
+  border-radius: var(--radius-sm);
+  margin-left: 12rpx;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 24rpx;
+  margin-bottom: 12rpx;
+  background: var(--bg-glass);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  transition: all var(--duration-fast);
+}
+
+.search-result-item:active {
+  background: var(--bg-glass-active);
+  transform: scale(0.98);
+}
+
+.result-avatar {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: var(--radius-lg);
+  margin-right: 20rpx;
+  flex-shrink: 0;
+  border: 2rpx solid var(--border-subtle);
+}
+
+.result-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.result-name {
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-time {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+
+.result-message {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 会话列表 */

@@ -149,3 +149,56 @@ export interface CallEndedData {
   endedBy: number
   reason?: CallEndReason
 }
+
+// ==================== 搜索相关类型 ====================
+
+// 搜索好友结果
+export interface SearchFriendResult {
+  id: number
+  account: string
+  nickname: string
+  avatar: string | null
+  remark: string | null
+}
+
+// 搜索群聊结果
+export interface SearchGroupResult {
+  id: number
+  name: string
+  avatar: string | null
+  owner_id: number
+  member_count: number
+  conversation_id: number
+  matched_member_nickname?: string
+  matched_member_avatar?: string | null
+  match_type: 'group_name' | 'member'
+}
+
+// 搜索消息结果
+export interface SearchMessageResult {
+  id: number
+  conversation_id: number
+  sender_id: number
+  type: string
+  content: string
+  status: string
+  created_at: string
+  sender_nickname: string
+  sender_avatar: string | null
+  conversation_type: 'private' | 'group'
+  // 私聊信息
+  other_user_id?: number
+  other_user_nickname?: string
+  other_user_avatar?: string | null
+  // 群聊信息
+  group_id?: number
+  group_name?: string
+  group_avatar?: string | null
+}
+
+// 综合搜索结果
+export interface SearchAllResult {
+  friends: SearchFriendResult[]
+  groups: SearchGroupResult[]
+  messages: SearchMessageResult[]
+}

@@ -435,7 +435,10 @@ const loadMore = async () => {
 
 const handleNewMessage = ({ conversationId: convId, message }: { conversationId: number; message: Message }) => {
   if (convId === conversationId.value) {
-    messages.value.push(message)
+    // 防止重复添加（多个监听器可能触发）
+    if (!messages.value.some(m => m.id === message.id)) {
+      messages.value.push(message)
+    }
     scrollToBottom()
 
     // 标记已读

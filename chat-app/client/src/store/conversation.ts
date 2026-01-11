@@ -71,6 +71,10 @@ export const useConversationStore = defineStore('conversation', () => {
 
   // 添加新消息
   const addMessage = (message: Message) => {
+    // 防止重复添加（多个监听器可能触发多次）
+    if (messages.value.some(m => m.id === message.id)) {
+      return
+    }
     messages.value.push(message)
 
     // 更新会话列表中的最后消息

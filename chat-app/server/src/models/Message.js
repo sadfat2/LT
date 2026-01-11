@@ -71,6 +71,35 @@ class Message {
     );
     return result.affectedRows > 0;
   }
+
+  // 搜索消息
+  static async search(userId, keyword, limit = 50) {
+    const searchKeyword = `%${keyword}%`;
+    // 确保 limit 是有效的正整数
+    const safeLimit = Math.max(1, Math.min(100, parseInt(limit) || 50));
+    const [rows] = await pool.query(
+      `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.content,
+              m.media_url, m.duration, m.file_name, m.file_size, m.status, m.created_at,
+              u.nickname as sender_nickname, u.avatar as sender_avatar,
+              c.type as conversation_type,
+              -- 私聊对方信息
+              ou.id as other_user_id, ou.nickname as other_user_nickname, ou.avatar as other_user_avatar,
+              -- 群聊信息
+              g.id as group_id, g.name as group_name, g.avatar as group_avatar
+       FROM messages m
+       JOIN users u ON m.sender_id = u.id
+       JOIN conversations c ON m.conversation_id = c.id
+       JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = ?
+       LEFT JOIN conversation_participants cp2 ON c.id = cp2.conversation_id AND cp2.user_id != ? AND c.type = 'private'
+       LEFT JOIN users ou ON cp2.user_id = ou.id
+       LEFT JOIN \`groups\` g ON c.group_id = g.id
+       WHERE m.type = 'text' AND m.content LIKE ? AND m.status != 'revoked'
+       ORDER BY m.created_at DESC
+       LIMIT ?`,
+      [userId, userId, searchKeyword, safeLimit]
+    );
+    return rows;
+  }
 }
 
 module.exports = Message;
