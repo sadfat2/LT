@@ -8,7 +8,10 @@
 set -e
 
 # 配置
-DEPLOY_DIR="/opt/chat-app"
+# 项目根目录（整个 LT 项目上传到 /opt/LT）
+DEPLOY_DIR="/opt/LT"
+# chat-app 目录
+CHAT_APP_DIR="$CHAT_APP_DIR"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 颜色输出
@@ -101,11 +104,16 @@ interactive_config() {
         exit 1
     fi
 
-    # Git 仓库
-    read -p "请输入 Git 仓库地址: " GIT_REPO
-    if [ -z "$GIT_REPO" ]; then
-        log_error "Git 仓库地址不能为空"
-        exit 1
+    # Git 仓库（可选，用于后续更新）
+    if [ -d "$CHAT_APP_DIR" ]; then
+        log_info "检测到项目已上传到 $CHAT_APP_DIR"
+        read -p "请输入 Git 仓库地址（用于后续更新，可留空跳过）: " GIT_REPO
+    else
+        read -p "请输入 Git 仓库地址: " GIT_REPO
+        if [ -z "$GIT_REPO" ]; then
+            log_error "Git 仓库地址不能为空（项目目录不存在）"
+            exit 1
+        fi
     fi
 
     # 数据库密码
@@ -144,16 +152,23 @@ EOF
     log_info "配置已保存到 $DEPLOY_DIR/.env"
 }
 
-# 克隆代码
+# 克隆代码（如果项目不存在且提供了 Git 仓库地址）
 clone_code() {
-    log_step "克隆项目代码..."
+    log_step "检查项目代码..."
 
-    if [ -d "$DEPLOY_DIR/chat-app" ]; then
-        log_warn "项目目录已存在，跳过克隆"
+    if [ -d "$CHAT_APP_DIR" ]; then
+        log_info "项目目录已存在: $CHAT_APP_DIR"
         return
     fi
 
-    git clone "$GIT_REPO" "$DEPLOY_DIR/chat-app"
+    if [ -z "$GIT_REPO" ]; then
+        log_error "项目目录不存在且未提供 Git 仓库地址"
+        log_info "请先上传项目到 $CHAT_APP_DIR 或提供 Git 仓库地址"
+        exit 1
+    fi
+
+    log_step "克隆项目代码..."
+    git clone "$GIT_REPO" "$CHAT_APP_DIR"
     log_info "代码克隆完成"
 }
 
@@ -161,7 +176,15 @@ clone_code() {
 pull_code() {
     log_step "拉取最新代码..."
 
-    cd "$DEPLOY_DIR/chat-app"
+    cd "$CHAT_APP_DIR"
+
+    # 检查是否是 Git 仓库
+    if [ ! -d ".git" ]; then
+        log_warn "当前目录不是 Git 仓库，跳过代码拉取"
+        log_info "如需更新代码，请手动上传或初始化 Git 仓库"
+        return
+    fi
+
     git fetch origin
     git pull origin main || git pull origin master
 
@@ -172,8 +195,8 @@ pull_code() {
 check_frontend_env() {
     log_step "检查前端环境配置..."
 
-    local env_file="$DEPLOY_DIR/chat-app/client/.env"
-    local env_example="$DEPLOY_DIR/chat-app/client/.env.example"
+    local env_file="$CHAT_APP_DIR/client/.env"
+    local env_example="$CHAT_APP_DIR/client/.env.example"
 
     if [ ! -f "$env_file" ]; then
         log_error "前端 .env 文件不存在: $env_file"
@@ -194,18 +217,18 @@ check_frontend_env() {
 build_frontend() {
     log_step "构建前端 H5..."
 
-    cd "$DEPLOY_DIR/chat-app/client"
+    cd "$CHAT_APP_DIR/client"
 
     # 使用 Docker 构建（避免在服务器安装 Node.js）
     docker run --rm \
-        -v "$DEPLOY_DIR/chat-app/client:/app" \
+        -v "$CHAT_APP_DIR/client:/app" \
         -w /app \
         node:18-alpine \
         sh -c "npm install && npm run build:h5"
 
     if [ $? -eq 0 ]; then
         log_info "前端构建完成"
-        log_info "输出目录: $DEPLOY_DIR/chat-app/client/dist/build/h5"
+        log_info "输出目录: $CHAT_APP_DIR/client/dist/build/h5"
     else
         log_error "前端构建失败"
         exit 1
@@ -283,7 +306,7 @@ run_migrations() {
     fi
 
     # 执行迁移脚本（如果存在）
-    local migrate_script="$DEPLOY_DIR/chat-app/server/sql/migrate.sh"
+    local migrate_script="$CHAT_APP_DIR/server/sql/migrate.sh"
     if [ -f "$migrate_script" ]; then
         log_info "执行迁移脚本..."
         docker exec chat-server sh /app/sql/migrate.sh 2>/dev/null || true
@@ -346,11 +369,11 @@ rollback_deploy() {
     # 恢复上传文件
     if [ -n "$latest_uploads" ]; then
         log_step "恢复上传文件..."
-        local uploads_dir="$DEPLOY_DIR/chat-app/server/uploads"
+        local uploads_dir="$CHAT_APP_DIR/server/uploads"
         if [ -d "$uploads_dir" ]; then
             mv "$uploads_dir" "${uploads_dir}_rollback_$(date +%s)"
         fi
-        tar -xzf "$latest_uploads" -C "$DEPLOY_DIR/chat-app/server/"
+        tar -xzf "$latest_uploads" -C "$CHAT_APP_DIR/server/"
         log_info "上传文件恢复完成"
     fi
 

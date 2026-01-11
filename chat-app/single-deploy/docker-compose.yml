@@ -1,6 +1,6 @@
 #======================================
 # Docker Compose 配置 - 单服务器部署
-# 路径: /opt/chat-app/docker-compose.yml
+# 路径: /opt/LT/docker-compose.yml
 #======================================
 
 version: '3.8'

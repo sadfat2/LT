@@ -36,11 +36,11 @@
 2. 注册一个域名并将 A 记录指向服务器 IP
 3. 确保 80/443 端口可访问
 
-### 2. 上传部署文件
+### 2. 上传项目文件
 
 ```bash
-# 本地执行：上传部署文件到服务器
-scp -r single-deploy/ root@YOUR_SERVER_IP:/opt/
+# 本地执行：上传整个 LT 项目到服务器
+scp -r LT/ root@YOUR_SERVER_IP:/opt/
 ```
 
 ### 3. 服务器初始化
@@ -50,7 +50,7 @@ scp -r single-deploy/ root@YOUR_SERVER_IP:/opt/
 ssh root@YOUR_SERVER_IP
 
 # 执行初始化脚本
-cd /opt/single-deploy
+cd /opt/LT/chat-app/single-deploy
 chmod +x *.sh
 sudo bash setup.sh
 ```
@@ -73,8 +73,8 @@ sudo bash ssl-setup.sh chat.yourdomain.com admin@yourdomain.com
 **重要**: 部署前必须配置前端环境变量。
 
 ```bash
-# 进入项目目录（首次部署前需要先克隆代码）
-cd /opt/chat-app/chat-app/client
+# 进入前端目录
+cd /opt/LT/chat-app/client
 
 # 复制模板并编辑
 cp .env.example .env
@@ -92,13 +92,14 @@ VITE_CDN_URL=https://chat.yourdomain.com
 ### 6. 部署应用
 
 ```bash
+cd /opt/LT/chat-app/single-deploy
 sudo bash deploy.sh --init
 ```
 
 部署过程中会要求输入：
-- 域名
-- Git 仓库地址
-- 数据库密码（可自动生成）
+- 域名（必填）
+- Git 仓库地址（如果项目已上传可留空，用于后续 git pull 更新）
+- 数据库密码（可留空自动生成）
 
 ### 7. 验证部署
 
@@ -200,7 +201,7 @@ crontab -e
 添加以下行（每天凌晨 3 点备份）：
 
 ```
-0 3 * * * /opt/single-deploy/backup.sh --all >> /var/log/chat-backup.log 2>&1
+0 3 * * * /opt/LT/chat-app/single-deploy/backup.sh --all >> /var/log/chat-backup.log 2>&1
 ```
 
 ## 常用命令
@@ -236,30 +237,34 @@ docker exec -it chat-redis redis-cli
 部署后的服务器目录结构：
 
 ```
-/opt/chat-app/
-├── chat-app/                  # 项目代码
+/opt/LT/
+├── chat-app/                  # 聊天应用
 │   ├── client/                # 前端代码
 │   │   ├── .env               # 前端环境配置（需手动创建）
 │   │   ├── .env.example       # 环境配置模板
 │   │   └── dist/build/h5/     # 构建后的 H5 文件
-│   └── server/                # 后端代码
-│       ├── src/               # 源代码
-│       ├── sql/               # SQL 文件
-│       │   ├── init.sql       # 初始化脚本
-│       │   ├── migrate.sh     # 迁移脚本
-│       │   └── migrations/    # 迁移文件目录
-│       └── uploads/           # 上传文件
-│           ├── avatars/       # 头像
-│           ├── images/        # 图片
-│           ├── voices/        # 语音
-│           ├── files/         # 文件
-│           └── videos/        # 视频
+│   ├── server/                # 后端代码
+│   │   ├── src/               # 源代码
+│   │   ├── sql/               # SQL 文件
+│   │   │   ├── init.sql       # 初始化脚本
+│   │   │   ├── migrate.sh     # 迁移脚本
+│   │   │   └── migrations/    # 迁移文件目录
+│   │   └── uploads/           # 上传文件
+│   │       ├── avatars/       # 头像
+│   │       ├── images/        # 图片
+│   │       ├── voices/        # 语音
+│   │       ├── files/         # 文件
+│   │       └── videos/        # 视频
+│   └── single-deploy/         # 部署脚本目录
+│       ├── deploy.sh          # 部署脚本
+│       ├── backup.sh          # 备份脚本
+│       └── ...
 ├── backups/                   # 备份目录
 │   ├── mysql/                 # 数据库备份
 │   └── uploads/               # 文件备份
-├── docker-compose.yml         # Docker 配置
-├── Dockerfile.server          # 后端镜像
-├── nginx.conf                 # Nginx 配置
+├── docker-compose.yml         # Docker 配置（部署时复制）
+├── Dockerfile.server          # 后端镜像（部署时复制）
+├── nginx.conf                 # Nginx 配置（部署时复制）
 └── .env                       # 后端环境变量
 ```
 
@@ -339,9 +344,10 @@ sudo certbot certificates
 
 ```bash
 # 检查 .env 文件是否存在
-cat /opt/chat-app/chat-app/client/.env
+cat /opt/LT/chat-app/client/.env
 
-# 重新构建前端
+# 重新构建前端（在 single-deploy 目录下执行）
+cd /opt/LT/chat-app/single-deploy
 sudo bash deploy.sh --frontend-only
 ```
 
