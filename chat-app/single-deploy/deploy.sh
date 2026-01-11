@@ -40,7 +40,8 @@ show_help() {
     echo ""
     echo "选项:"
     echo "  --init              首次部署（克隆代码、构建、启动）"
-    echo "  --update            更新部署（拉取代码、重新构建）"
+    echo "  --update            更新部署（备份、拉取代码、迁移、重建）"
+    echo "  --rollback          回滚到上一个备份"
     echo "  --frontend-only     仅更新前端"
     echo "  --backend-only      仅更新后端"
     echo "  --restart           重启所有服务"
@@ -51,6 +52,7 @@ show_help() {
     echo "示例:"
     echo "  sudo bash deploy.sh --init        # 首次部署"
     echo "  sudo bash deploy.sh --update      # 更新部署"
+    echo "  sudo bash deploy.sh --rollback    # 回滚部署"
 }
 
 # 检查是否以 root 运行
@@ -166,25 +168,26 @@ pull_code() {
     log_info "代码更新完成"
 }
 
-# 更新前端域名配置
-update_frontend_config() {
-    local domain=$1
-    log_step "更新前端配置..."
+# 检查前端环境配置
+check_frontend_env() {
+    log_step "检查前端环境配置..."
 
-    # 更新 request.ts
-    local request_file="$DEPLOY_DIR/chat-app/client/src/utils/request.ts"
-    if [ -f "$request_file" ]; then
-        sed -i "s|https://chat.yourdomain.com|https://$domain|g" "$request_file"
-        sed -i "s|https://cdn.yourdomain.com|https://$domain|g" "$request_file"
-        log_info "已更新 request.ts"
+    local env_file="$DEPLOY_DIR/chat-app/client/.env"
+    local env_example="$DEPLOY_DIR/chat-app/client/.env.example"
+
+    if [ ! -f "$env_file" ]; then
+        log_error "前端 .env 文件不存在: $env_file"
+        if [ -f "$env_example" ]; then
+            log_info "请复制 .env.example 并配置: cp $env_example $env_file"
+        fi
+        log_info "需要配置的变量:"
+        log_info "  VITE_API_URL=https://$DOMAIN"
+        log_info "  VITE_SOCKET_URL=https://$DOMAIN"
+        log_info "  VITE_CDN_URL=https://$DOMAIN"
+        exit 1
     fi
 
-    # 更新 socket.ts
-    local socket_file="$DEPLOY_DIR/chat-app/client/src/store/socket.ts"
-    if [ -f "$socket_file" ]; then
-        sed -i "s|https://chat.yourdomain.com|https://$domain|g" "$socket_file"
-        log_info "已更新 socket.ts"
-    fi
+    log_info "前端环境配置检查通过"
 }
 
 # 构建前端
@@ -254,6 +257,109 @@ update_docker_services() {
     docker compose up -d --build
 
     log_info "Docker 服务已更新"
+}
+
+# 运行数据库迁移
+run_migrations() {
+    log_step "检查数据库迁移..."
+
+    cd "$DEPLOY_DIR"
+
+    # 等待 MySQL 完全启动
+    local max_retries=30
+    local retry=0
+    while [ $retry -lt $max_retries ]; do
+        if docker exec chat-mysql mysqladmin ping -h localhost -u root -p"$DB_ROOT_PASSWORD" --silent 2>/dev/null; then
+            break
+        fi
+        retry=$((retry + 1))
+        log_info "等待 MySQL 启动... ($retry/$max_retries)"
+        sleep 2
+    done
+
+    if [ $retry -eq $max_retries ]; then
+        log_error "MySQL 启动超时"
+        return 1
+    fi
+
+    # 执行迁移脚本（如果存在）
+    local migrate_script="$DEPLOY_DIR/chat-app/server/sql/migrate.sh"
+    if [ -f "$migrate_script" ]; then
+        log_info "执行迁移脚本..."
+        docker exec chat-server sh /app/sql/migrate.sh 2>/dev/null || true
+    fi
+
+    log_info "数据库迁移完成"
+}
+
+# 更新前备份
+backup_before_update() {
+    log_step "更新前备份..."
+
+    local backup_script="$SCRIPT_DIR/backup.sh"
+    if [ -f "$backup_script" ]; then
+        bash "$backup_script" --all
+    else
+        log_warn "备份脚本不存在，跳过备份"
+    fi
+}
+
+# 回滚部署
+rollback_deploy() {
+    echo "========================================"
+    echo "  回滚部署"
+    echo "========================================"
+    echo ""
+
+    check_root
+    load_env
+
+    local backup_dir="$DEPLOY_DIR/backups"
+
+    # 查找最近的数据库备份
+    local latest_db=$(ls -t "$backup_dir/mysql/"*.gz 2>/dev/null | head -1)
+    local latest_uploads=$(ls -t "$backup_dir/uploads/"*.gz 2>/dev/null | head -1)
+
+    if [ -z "$latest_db" ]; then
+        log_error "未找到数据库备份"
+        log_info "备份目录: $backup_dir/mysql/"
+        exit 1
+    fi
+
+    log_info "找到数据库备份: $latest_db"
+    if [ -n "$latest_uploads" ]; then
+        log_info "找到文件备份: $latest_uploads"
+    fi
+
+    read -p "确认回滚到此备份？(y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_info "已取消回滚"
+        exit 0
+    fi
+
+    # 恢复数据库
+    log_step "恢复数据库..."
+    gunzip -c "$latest_db" | docker exec -i chat-mysql mysql -uroot -p"$DB_ROOT_PASSWORD" "$DB_NAME"
+    log_info "数据库恢复完成"
+
+    # 恢复上传文件
+    if [ -n "$latest_uploads" ]; then
+        log_step "恢复上传文件..."
+        local uploads_dir="$DEPLOY_DIR/chat-app/server/uploads"
+        if [ -d "$uploads_dir" ]; then
+            mv "$uploads_dir" "${uploads_dir}_rollback_$(date +%s)"
+        fi
+        tar -xzf "$latest_uploads" -C "$DEPLOY_DIR/chat-app/server/"
+        log_info "上传文件恢复完成"
+    fi
+
+    # 重启服务
+    log_step "重启服务..."
+    cd "$DEPLOY_DIR"
+    docker compose restart server
+
+    log_info "回滚完成！"
 }
 
 # 配置 Nginx
@@ -378,8 +484,8 @@ init_deploy() {
     # 克隆代码
     clone_code
 
-    # 更新前端配置
-    update_frontend_config "$DOMAIN"
+    # 检查前端环境配置
+    check_frontend_env
 
     # 复制部署文件
     copy_deploy_files
@@ -421,17 +527,23 @@ update_deploy() {
     check_dependencies
     load_env
 
+    # 更新前备份
+    backup_before_update
+
     # 拉取代码
     pull_code
 
-    # 更新前端配置
-    update_frontend_config "$DOMAIN"
+    # 检查前端环境配置
+    check_frontend_env
 
     # 构建前端
     build_frontend
 
     # 更新 Docker 服务
     update_docker_services
+
+    # 运行数据库迁移
+    run_migrations
 
     # 重载 Nginx
     systemctl reload nginx
@@ -451,7 +563,7 @@ update_frontend_only() {
     load_env
 
     pull_code
-    update_frontend_config "$DOMAIN"
+    check_frontend_env
     build_frontend
 
     systemctl reload nginx
@@ -483,6 +595,9 @@ main() {
             ;;
         --update)
             update_deploy
+            ;;
+        --rollback)
+            rollback_deploy
             ;;
         --frontend-only)
             update_frontend_only

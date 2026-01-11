@@ -20,8 +20,11 @@ RUN npm ci --only=production && npm cache clean --force
 # 复制源代码
 COPY chat-app/server/src ./src
 
-# 创建上传目录
-RUN mkdir -p uploads/avatars uploads/images uploads/voices
+# 复制 SQL 迁移脚本
+COPY chat-app/server/sql ./sql
+
+# 创建上传目录（包含文件和视频）
+RUN mkdir -p uploads/avatars uploads/images uploads/voices uploads/files uploads/videos
 
 # 创建非 root 用户（安全）
 RUN addgroup -g 1001 -S nodejs && \

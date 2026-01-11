@@ -68,7 +68,28 @@ sudo bash setup.sh
 sudo bash ssl-setup.sh chat.yourdomain.com admin@yourdomain.com
 ```
 
-### 5. 部署应用
+### 5. 配置前端环境变量
+
+**重要**: 部署前必须配置前端环境变量。
+
+```bash
+# 进入项目目录（首次部署前需要先克隆代码）
+cd /opt/chat-app/chat-app/client
+
+# 复制模板并编辑
+cp .env.example .env
+nano .env
+```
+
+编辑 `.env` 文件，设置实际域名：
+
+```env
+VITE_API_URL=https://chat.yourdomain.com
+VITE_SOCKET_URL=https://chat.yourdomain.com
+VITE_CDN_URL=https://chat.yourdomain.com
+```
+
+### 6. 部署应用
 
 ```bash
 sudo bash deploy.sh --init
@@ -79,7 +100,7 @@ sudo bash deploy.sh --init
 - Git 仓库地址
 - 数据库密码（可自动生成）
 
-### 6. 验证部署
+### 7. 验证部署
 
 访问 `https://chat.yourdomain.com` 测试应用。
 
@@ -96,7 +117,8 @@ sudo bash deploy.sh --init
 
 ```bash
 --init              # 首次部署
---update            # 更新部署（拉取代码、重新构建）
+--update            # 更新部署（备份、拉取代码、迁移、重建）
+--rollback          # 回滚到上一个备份
 --frontend-only     # 仅更新前端
 --backend-only      # 仅更新后端
 --restart           # 重启所有服务
@@ -113,6 +135,58 @@ sudo bash deploy.sh --init
 --list              # 列出现有备份
 --restore           # 恢复备份（交互式）
 --clean             # 清理旧备份
+```
+
+## 更新部署
+
+### 标准更新流程
+
+```bash
+# 1. 更新部署（自动备份 → 拉取代码 → 数据库迁移 → 重建）
+sudo bash deploy.sh --update
+```
+
+更新流程会自动：
+1. 创建数据库和文件备份
+2. 拉取最新代码
+3. 检查并应用数据库迁移
+4. 重建 Docker 容器
+5. 执行健康检查
+
+### 回滚操作
+
+如果更新后出现问题，可以快速回滚：
+
+```bash
+sudo bash deploy.sh --rollback
+```
+
+回滚会恢复到最近一次备份的数据库和上传文件。
+
+## 数据库迁移
+
+项目使用版本化的数据库迁移系统，迁移文件位于 `server/sql/migrations/` 目录。
+
+### 迁移文件命名规则
+
+```
+000_schema_migrations.sql    # 迁移版本表
+001_groups_and_media.sql     # 群聊和媒体功能
+002_xxx.sql                  # 后续迁移...
+```
+
+### 手动执行迁移
+
+```bash
+# 进入服务器容器执行迁移
+docker exec chat-server sh /app/sql/migrate.sh
+```
+
+### 检查迁移状态
+
+```bash
+docker exec chat-mysql mysql -uroot -p$DB_ROOT_PASSWORD chat_app \
+  -e "SELECT * FROM schema_migrations"
 ```
 
 ## 定时备份
@@ -141,6 +215,9 @@ sudo bash deploy.sh --logs
 # 更新代码并重新部署
 sudo bash deploy.sh --update
 
+# 回滚到上一个备份
+sudo bash deploy.sh --rollback
+
 # 仅重启服务
 sudo bash deploy.sh --restart
 
@@ -162,17 +239,28 @@ docker exec -it chat-redis redis-cli
 /opt/chat-app/
 ├── chat-app/                  # 项目代码
 │   ├── client/                # 前端代码
-│   │   └── dist/build/h5/    # 构建后的 H5 文件
+│   │   ├── .env               # 前端环境配置（需手动创建）
+│   │   ├── .env.example       # 环境配置模板
+│   │   └── dist/build/h5/     # 构建后的 H5 文件
 │   └── server/                # 后端代码
 │       ├── src/               # 源代码
+│       ├── sql/               # SQL 文件
+│       │   ├── init.sql       # 初始化脚本
+│       │   ├── migrate.sh     # 迁移脚本
+│       │   └── migrations/    # 迁移文件目录
 │       └── uploads/           # 上传文件
+│           ├── avatars/       # 头像
+│           ├── images/        # 图片
+│           ├── voices/        # 语音
+│           ├── files/         # 文件
+│           └── videos/        # 视频
 ├── backups/                   # 备份目录
 │   ├── mysql/                 # 数据库备份
 │   └── uploads/               # 文件备份
 ├── docker-compose.yml         # Docker 配置
 ├── Dockerfile.server          # 后端镜像
 ├── nginx.conf                 # Nginx 配置
-└── .env                       # 环境变量
+└── .env                       # 后端环境变量
 ```
 
 ## 端口说明
@@ -184,6 +272,18 @@ docker exec -it chat-redis redis-cli
 | Node.js | 3000 | 仅本地，通过 Nginx 代理 |
 | MySQL | 3306 | 仅本地 |
 | Redis | 6379 | 仅本地 |
+
+## 上传限制
+
+| 文件类型 | 大小限制 |
+|----------|----------|
+| 头像 | 2MB |
+| 图片 | 10MB |
+| 语音 | 5MB |
+| 文件 | 20MB |
+| 视频 | 50MB |
+
+Nginx 已配置 `client_max_body_size 60M` 以支持最大文件上传。
 
 ## 安全建议
 
@@ -235,7 +335,36 @@ sudo certbot renew --dry-run
 sudo certbot certificates
 ```
 
+### 前端配置问题
+
+```bash
+# 检查 .env 文件是否存在
+cat /opt/chat-app/chat-app/client/.env
+
+# 重新构建前端
+sudo bash deploy.sh --frontend-only
+```
+
+### 数据库迁移问题
+
+```bash
+# 查看迁移状态
+docker exec chat-mysql mysql -uroot -p$DB_ROOT_PASSWORD chat_app \
+  -e "SELECT * FROM schema_migrations"
+
+# 手动执行迁移
+docker exec chat-server sh /app/sql/migrate.sh
+```
+
 ## 更新日志
+
+- **v2.0.0** - 部署方案改进
+  - 前端配置改用 .env 环境变量注入
+  - 新增数据库迁移系统（自动版本管理）
+  - 新增 `--rollback` 回滚功能
+  - 更新前自动备份
+  - 支持 50MB 视频上传
+  - 视频文件支持断点续传
 
 - **v1.0.0** - 初始版本
   - 支持单服务器部署

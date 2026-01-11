@@ -5,10 +5,11 @@ import type { Message } from '../types'
 
 // Socket.io 连接地址
 // 开发环境：使用当前页面 origin，通过 Vite 代理连接后端
-// 生产环境：香港节点（低延迟接入，代理到日本）
+// 生产环境：从 .env 文件读取 VITE_SOCKET_URL
 const getSocketUrl = (): string => {
   if (!import.meta.env.DEV) {
-    return 'https://chat.yourdomain.com'
+    // 生产环境：优先使用环境变量，回退到默认值
+    return import.meta.env.VITE_SOCKET_URL || 'https://chat.yourdomain.com'
   }
   // 开发环境：使用当前页面的 origin（包括协议、主机名、端口）
   // 例如：https://172.30.12.122:8080 或 https://localhost:8080
