@@ -69,9 +69,38 @@ install_docker() {
     systemctl enable docker
     systemctl start docker
 
+    # 配置 Docker 国内镜像源
+    configure_docker_mirror
+
     log_info "Docker 安装完成"
     docker --version
     docker compose version
+}
+
+# 配置 Docker 国内镜像源
+configure_docker_mirror() {
+    log_info "配置 Docker 国内镜像源..."
+
+    mkdir -p /etc/docker
+    cat > /etc/docker/daemon.json << 'EOF'
+{
+    "registry-mirrors": [
+        "https://docker.1ms.run",
+        "https://docker.xuanyuan.me"
+    ],
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-size": "100m",
+        "max-file": "3"
+    }
+}
+EOF
+
+    # 重启 Docker 使配置生效
+    systemctl daemon-reload
+    systemctl restart docker
+
+    log_info "Docker 镜像源配置完成"
 }
 
 # 安装 Nginx

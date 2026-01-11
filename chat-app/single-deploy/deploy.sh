@@ -220,11 +220,12 @@ build_frontend() {
     cd "$CHAT_APP_DIR/client"
 
     # 使用 Docker 构建（避免在服务器安装 Node.js）
+    # 使用淘宝 npm 镜像加速
     docker run --rm \
         -v "$CHAT_APP_DIR/client:/app" \
         -w /app \
         node:18-alpine \
-        sh -c "npm install && npm run build:h5"
+        sh -c "npm config set registry https://registry.npmmirror.com && npm install && npm run build:h5"
 
     if [ $? -eq 0 ]; then
         log_info "前端构建完成"

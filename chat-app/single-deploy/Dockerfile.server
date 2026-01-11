@@ -14,6 +14,9 @@ RUN apk add --no-cache wget
 # 复制 package 文件
 COPY chat-app/server/package*.json ./
 
+# 配置 npm 淘宝镜像（国内加速）
+RUN npm config set registry https://registry.npmmirror.com
+
 # 安装生产依赖
 RUN npm ci --only=production && npm cache clean --force
 
