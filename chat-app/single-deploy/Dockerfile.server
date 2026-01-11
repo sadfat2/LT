@@ -18,7 +18,7 @@ COPY chat-app/server/package*.json ./
 RUN npm config set registry https://registry.npmmirror.com
 
 # 安装生产依赖
-RUN npm ci --only=production && npm cache clean --force
+RUN npm install --omit=dev && npm cache clean --force
 
 # 复制源代码
 COPY chat-app/server/src ./src
