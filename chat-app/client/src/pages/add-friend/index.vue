@@ -1,20 +1,44 @@
 <template>
   <view class="add-friend-page">
+    <!-- 背景装饰 -->
+    <view class="bg-decoration">
+      <view class="orb orb-1"></view>
+      <view class="orb orb-2"></view>
+    </view>
+
+    <!-- 导航栏 -->
+    <view class="nav-header">
+      <view class="nav-back" @click="goBack">
+        <text class="back-icon">‹</text>
+      </view>
+      <text class="nav-title">添加好友</text>
+      <view class="nav-placeholder"></view>
+    </view>
+
     <!-- 搜索框 -->
-    <view class="search-bar">
-      <input
-        v-model="keyword"
-        class="search-input"
-        type="text"
-        placeholder="输入账号搜索"
-        confirm-type="search"
-        @confirm="handleSearch"
-      />
-      <button class="search-btn" @click="handleSearch">搜索</button>
+    <view class="search-section">
+      <view class="search-card">
+        <view class="search-icon">🔍</view>
+        <input
+          v-model="keyword"
+          class="search-input"
+          type="text"
+          placeholder="输入账号搜索"
+          placeholder-class="placeholder"
+          confirm-type="search"
+          @confirm="handleSearch"
+        />
+        <view v-if="keyword" class="clear-btn" @click="keyword = ''">
+          <text>×</text>
+        </view>
+      </view>
+      <view class="search-btn" @click="handleSearch">
+        <text>搜索</text>
+      </view>
     </view>
 
     <!-- 搜索结果 -->
-    <view class="result-list">
+    <scroll-view class="result-list" scroll-y>
       <view
         v-for="user in searchResults"
         :key="user.id"
@@ -25,24 +49,34 @@
           :src="user.avatar || '/static/images/default-avatar.svg'"
           mode="aspectFill"
         />
-        <view class="info">
+        <view class="user-info">
           <text class="nickname">{{ user.nickname }}</text>
           <text class="account">账号: {{ user.account }}</text>
         </view>
-        <button
+        <view
           class="add-btn"
-          :disabled="addingId === user.id"
+          :class="{ loading: addingId === user.id }"
           @click="handleAdd(user)"
         >
-          {{ addingId === user.id ? '发送中' : '添加' }}
-        </button>
+          <text v-if="addingId === user.id">发送中</text>
+          <text v-else>+ 添加</text>
+        </view>
       </view>
 
       <!-- 空状态 -->
-      <view v-if="searched && searchResults.length === 0" class="empty">
+      <view v-if="searched && searchResults.length === 0" class="empty-state">
+        <text class="empty-icon">🔍</text>
         <text class="empty-text">未找到相关用户</text>
+        <text class="empty-hint">请尝试其他账号</text>
       </view>
-    </view>
+
+      <!-- 初始提示 -->
+      <view v-if="!searched" class="hint-state">
+        <text class="hint-icon">👋</text>
+        <text class="hint-text">搜索用户账号</text>
+        <text class="hint-desc">输入好友的账号进行搜索</text>
+      </view>
+    </scroll-view>
   </view>
 </template>
 
@@ -85,86 +119,265 @@ const handleAdd = async (user: User) => {
     addingId.value = null
   }
 }
+
+const goBack = () => {
+  uni.navigateBack()
+}
 </script>
 
 <style scoped>
 .add-friend-page {
   min-height: 100vh;
-  background-color: var(--bg-color);
+  background: var(--bg-deep);
+  position: relative;
 }
 
-.search-bar {
+/* 背景装饰 */
+.bg-decoration {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100rpx);
+  opacity: 0.25;
+}
+
+.orb-1 {
+  width: 400rpx;
+  height: 400rpx;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.4) 0%, transparent 70%);
+  top: -100rpx;
+  right: -100rpx;
+}
+
+.orb-2 {
+  width: 350rpx;
+  height: 350rpx;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.3) 0%, transparent 70%);
+  bottom: 300rpx;
+  left: -100rpx;
+}
+
+/* 导航头部 */
+.nav-header {
+  position: relative;
+  z-index: 10;
   display: flex;
-  padding: 20rpx;
-  background-color: var(--bg-white);
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 24rpx;
+  padding-top: calc(20rpx + env(safe-area-inset-top));
+  background: var(--gradient-card);
+  backdrop-filter: var(--blur-lg);
+  border-bottom: 1rpx solid var(--border-subtle);
+}
+
+.nav-back {
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-glass);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.back-icon {
+  font-size: 48rpx;
+  color: var(--text-primary);
+}
+
+.nav-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.nav-placeholder {
+  width: 72rpx;
+}
+
+/* 搜索区域 */
+.search-section {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 24rpx;
+}
+
+.search-card {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: var(--bg-glass);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 0 24rpx;
+  transition: all var(--duration-fast);
+}
+
+.search-card:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 4rpx rgba(168, 85, 247, 0.15);
+}
+
+.search-icon {
+  font-size: 32rpx;
+  margin-right: 16rpx;
+  opacity: 0.6;
 }
 
 .search-input {
   flex: 1;
-  background-color: #f5f5f5;
-  border: none;
-  border-radius: 8rpx;
-  padding: 20rpx 24rpx;
-  font-size: 28rpx;
+  height: 80rpx;
+  font-size: var(--text-md);
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.placeholder {
+  color: var(--text-muted);
+}
+
+.clear-btn {
+  width: 44rpx;
+  height: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx;
+  color: var(--text-muted);
 }
 
 .search-btn {
-  background-color: var(--primary-color);
+  padding: 20rpx 32rpx;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   color: #fff;
-  font-size: 28rpx;
-  padding: 0 30rpx;
-  margin-left: 20rpx;
-  border-radius: 8rpx;
+  box-shadow: var(--shadow-glow);
+  transition: all var(--duration-fast);
 }
 
+.search-btn:active {
+  transform: scale(0.95);
+}
+
+/* 结果列表 */
 .result-list {
-  margin-top: 20rpx;
+  position: relative;
+  z-index: 5;
+  height: calc(100vh - 280rpx - env(safe-area-inset-top));
+  padding: 0 24rpx;
 }
 
 .user-item {
   display: flex;
   align-items: center;
-  padding: 24rpx 30rpx;
-  background-color: var(--bg-white);
-  border-bottom: 1rpx solid var(--border-color);
+  padding: 24rpx;
+  margin-bottom: 16rpx;
+  background: var(--gradient-card);
+  backdrop-filter: var(--blur-md);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  animation: fadeInUp 0.3s ease-out;
 }
 
-.user-item .avatar {
-  width: 88rpx;
-  height: 88rpx;
-  border-radius: 8rpx;
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.avatar {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: var(--radius-xl);
   margin-right: 24rpx;
+  border: 2rpx solid var(--border-subtle);
 }
 
-.info {
+.user-info {
   flex: 1;
 }
 
 .nickname {
   display: block;
-  font-size: 32rpx;
-  color: var(--text-color);
+  font-size: var(--text-lg);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
   margin-bottom: 8rpx;
 }
 
 .account {
-  font-size: 26rpx;
-  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 
 .add-btn {
-  background-color: var(--primary-color);
+  padding: 16rpx 32rpx;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   color: #fff;
-  font-size: 26rpx;
-  padding: 12rpx 30rpx;
-  border-radius: 6rpx;
+  box-shadow: var(--shadow-glow);
+  transition: all var(--duration-fast);
 }
 
-.add-btn[disabled] {
-  background-color: #91D5A7;
+.add-btn:active {
+  transform: scale(0.95);
 }
 
-.empty {
-  padding: 100rpx 0;
+.add-btn.loading {
+  background: var(--bg-glass);
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+/* 空状态 */
+.empty-state,
+.hint-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 40rpx;
+}
+
+.empty-icon,
+.hint-icon {
+  font-size: 100rpx;
+  margin-bottom: 24rpx;
+  opacity: 0.4;
+}
+
+.empty-text,
+.hint-text {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  margin-bottom: 8rpx;
+}
+
+.empty-hint,
+.hint-desc {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 </style>

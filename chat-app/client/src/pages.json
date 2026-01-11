@@ -2,49 +2,45 @@
   "easycom": {
     "autoscan": true,
     "custom": {
-      "CallModal": "@/components/call/CallModal.vue",
-      "CallScreen": "@/components/call/CallScreen.vue"
+      "^CallModal": "@/components/call/CallModal.vue",
+      "^CallScreen": "@/components/call/CallScreen.vue",
+      "^CustomTabBar": "@/components/CustomTabBar.vue"
     }
   },
   "pages": [
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "消息",
-        "navigationBarBackgroundColor": "#EDEDED",
-        "navigationBarTextStyle": "black"
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "消息"
       }
     },
     {
       "path": "pages/login/index",
       "style": {
-        "navigationBarTitleText": "登录",
-        "navigationBarBackgroundColor": "#EDEDED",
-        "navigationBarTextStyle": "black"
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "登录"
       }
     },
     {
       "path": "pages/register/index",
       "style": {
-        "navigationBarTitleText": "注册",
-        "navigationBarBackgroundColor": "#EDEDED",
-        "navigationBarTextStyle": "black"
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "注册"
       }
     },
     {
       "path": "pages/contacts/index",
       "style": {
-        "navigationBarTitleText": "通讯录",
-        "navigationBarBackgroundColor": "#EDEDED",
-        "navigationBarTextStyle": "black"
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "通讯录"
       }
     },
     {
       "path": "pages/profile/index",
       "style": {
-        "navigationBarTitleText": "我",
-        "navigationBarBackgroundColor": "#EDEDED",
-        "navigationBarTextStyle": "black"
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "我"
       }
     },
     {
@@ -57,25 +53,22 @@
     {
       "path": "pages/add-friend/index",
       "style": {
-        "navigationBarTitleText": "添加好友",
-        "navigationBarBackgroundColor": "#EDEDED",
-        "navigationBarTextStyle": "black"
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "添加好友"
       }
     },
     {
       "path": "pages/friend-requests/index",
       "style": {
-        "navigationBarTitleText": "新的朋友",
-        "navigationBarBackgroundColor": "#EDEDED",
-        "navigationBarTextStyle": "black"
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "新的朋友"
       }
     },
     {
       "path": "pages/user-info/index",
       "style": {
-        "navigationBarTitleText": "用户资料",
-        "navigationBarBackgroundColor": "#EDEDED",
-        "navigationBarTextStyle": "black"
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "用户资料"
       }
     },
     {
@@ -101,34 +94,30 @@
     }
   ],
   "globalStyle": {
-    "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "聊天室",
-    "navigationBarBackgroundColor": "#EDEDED",
-    "backgroundColor": "#F8F8F8"
+    "navigationStyle": "custom",
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "Nebula Chat",
+    "navigationBarBackgroundColor": "#0a0a0f",
+    "backgroundColor": "#0a0a0f"
   },
   "tabBar": {
-    "color": "#999999",
-    "selectedColor": "#07C160",
-    "backgroundColor": "#F7F7F7",
+    "custom": true,
+    "color": "#6b7280",
+    "selectedColor": "#a855f7",
+    "backgroundColor": "#0a0a0f",
     "borderStyle": "black",
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "消息",
-        "iconPath": "static/images/tab-message.png",
-        "selectedIconPath": "static/images/tab-message-active.png"
+        "text": "消息"
       },
       {
         "pagePath": "pages/contacts/index",
-        "text": "通讯录",
-        "iconPath": "static/images/tab-contacts.png",
-        "selectedIconPath": "static/images/tab-contacts-active.png"
+        "text": "通讯录"
       },
       {
         "pagePath": "pages/profile/index",
-        "text": "我",
-        "iconPath": "static/images/tab-profile.png",
-        "selectedIconPath": "static/images/tab-profile-active.png"
+        "text": "我"
       }
     ]
   }

@@ -1,5 +1,11 @@
 <template>
   <view class="chat-page">
+    <!-- 背景装饰 -->
+    <view class="bg-decoration">
+      <view class="orb orb-1"></view>
+      <view class="orb orb-2"></view>
+    </view>
+
     <!-- 自定义导航栏 -->
     <view class="custom-nav">
       <view class="nav-left" @click="goBack">
@@ -213,32 +219,32 @@
       <!-- 更多面板 -->
       <view v-if="showMore" class="more-panel">
         <view class="panel-item" @click="chooseImage">
-          <view class="panel-icon">
-            <text>图</text>
+          <view class="panel-icon icon-album">
+            <text>🖼️</text>
           </view>
           <text class="panel-text">相册</text>
         </view>
         <view class="panel-item" @click="takePhoto">
-          <view class="panel-icon">
-            <text>拍</text>
+          <view class="panel-icon icon-camera">
+            <text>📷</text>
           </view>
           <text class="panel-text">拍照</text>
         </view>
         <view class="panel-item" @click="chooseVideo">
-          <view class="panel-icon">
-            <text>视</text>
+          <view class="panel-icon icon-video">
+            <text>🎬</text>
           </view>
           <text class="panel-text">视频</text>
         </view>
         <view class="panel-item" @click="chooseFile">
-          <view class="panel-icon">
-            <text>文</text>
+          <view class="panel-icon icon-file">
+            <text>📁</text>
           </view>
           <text class="panel-text">文件</text>
         </view>
         <!-- 语音通话（仅私聊） -->
         <view v-if="conversationType === 'private'" class="panel-item" @click="startVoiceCall">
-          <view class="panel-icon call-icon">
+          <view class="panel-icon icon-call">
             <text>📞</text>
           </view>
           <text class="panel-text">语音通话</text>
@@ -1375,17 +1381,55 @@ const scrollToBottom = () => {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: var(--bg-color);
+  background: var(--bg-deep);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 背景装饰 */
+.bg-decoration {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100rpx);
+  opacity: 0.2;
+}
+
+.orb-1 {
+  width: 400rpx;
+  height: 400rpx;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.4) 0%, transparent 70%);
+  top: -100rpx;
+  right: -100rpx;
+}
+
+.orb-2 {
+  width: 350rpx;
+  height: 350rpx;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.3) 0%, transparent 70%);
+  bottom: 200rpx;
+  left: -100rpx;
 }
 
 /* 自定义导航栏 */
 .custom-nav {
+  position: relative;
+  z-index: 100;
   display: flex;
   align-items: center;
   height: 88rpx;
   padding-top: env(safe-area-inset-top);
-  background-color: #EDEDED;
-  border-bottom: 1rpx solid var(--border-color);
+  background: var(--gradient-card);
+  backdrop-filter: var(--blur-lg);
+  -webkit-backdrop-filter: var(--blur-lg);
+  border-bottom: 1rpx solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -1398,16 +1442,21 @@ const scrollToBottom = () => {
 
 .back-icon {
   font-size: 56rpx;
-  color: var(--text-color);
+  color: var(--text-primary);
   font-weight: 300;
+  transition: color var(--duration-fast);
+}
+
+.back-icon:active {
+  color: var(--accent-primary);
 }
 
 .nav-title {
   flex: 1;
   text-align: center;
-  font-size: 34rpx;
-  font-weight: 500;
-  color: var(--text-color);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1423,11 +1472,14 @@ const scrollToBottom = () => {
 .more-icon {
   font-size: 40rpx;
   font-weight: bold;
-  color: var(--text-color);
+  color: var(--text-secondary);
   letter-spacing: 2rpx;
 }
 
+/* 消息列表 */
 .message-list {
+  position: relative;
+  z-index: 5;
   flex: 1;
   padding: 20rpx;
   overflow-y: auto;
@@ -1436,12 +1488,24 @@ const scrollToBottom = () => {
 .load-more {
   text-align: center;
   padding: 20rpx;
-  color: var(--text-secondary);
-  font-size: 26rpx;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
 }
 
 .message-item {
   margin-bottom: 30rpx;
+  animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message-item.self .message-content {
@@ -1449,7 +1513,20 @@ const scrollToBottom = () => {
 }
 
 .message-item.self .bubble {
-  background-color: var(--primary-light);
+  background: var(--gradient-primary);
+  box-shadow: 0 4rpx 20rpx rgba(168, 85, 247, 0.25);
+}
+
+.message-item.self .bubble .text-content {
+  color: #fff;
+}
+
+.message-item.self .bubble .voice-wave {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+.message-item.self .bubble .voice-duration {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .message-item.self .message-status {
@@ -1457,13 +1534,15 @@ const scrollToBottom = () => {
   padding-right: 70rpx;
 }
 
+/* 时间分割线 */
 .time-divider {
   text-align: center;
-  padding: 20rpx 0;
-  font-size: 24rpx;
-  color: var(--text-light);
+  padding: 24rpx 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
+/* 系统消息 */
 .system-message {
   display: flex;
   justify-content: center;
@@ -1472,47 +1551,62 @@ const scrollToBottom = () => {
 
 .system-message-text {
   display: inline-block;
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 8rpx;
-  padding: 8rpx 20rpx;
-  font-size: 24rpx;
-  color: var(--text-light);
+  background: var(--bg-glass);
+  border-radius: var(--radius-full);
+  padding: 10rpx 24rpx;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  border: 1rpx solid var(--border-subtle);
 }
 
+/* 消息内容 */
 .message-content {
   display: flex;
   align-items: flex-start;
 }
 
 .avatar-small {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 8rpx;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: var(--radius-lg);
   flex-shrink: 0;
-  margin: 0 20rpx;
+  margin: 0 16rpx;
+  border: 2rpx solid var(--border-subtle);
 }
 
+/* 消息气泡 */
 .bubble {
-  max-width: 60%;
-  background-color: var(--bg-white);
-  border-radius: 8rpx;
-  padding: 20rpx;
+  max-width: 65%;
+  background: var(--bg-glass);
+  backdrop-filter: var(--blur-sm);
+  -webkit-backdrop-filter: var(--blur-sm);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 20rpx 24rpx;
+  transition: all var(--duration-fast);
+}
+
+.bubble:active {
+  transform: scale(0.98);
 }
 
 .bubble.revoked {
   background-color: transparent;
+  border: none;
 }
 
 .bubble.revoked .text-content {
-  color: var(--text-light);
-  font-size: 26rpx;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-style: italic;
 }
 
 .text-content {
-  font-size: 30rpx;
-  color: var(--text-color);
+  font-size: var(--text-md);
+  color: var(--text-primary);
   word-break: break-all;
   white-space: pre-wrap;
+  line-height: 1.5;
 }
 
 .message-body {
@@ -1522,27 +1616,34 @@ const scrollToBottom = () => {
 }
 
 .sender-name {
-  font-size: 22rpx;
-  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  color: var(--accent-tertiary);
   margin-bottom: 8rpx;
+  margin-left: 4rpx;
 }
 
 .message-item.self .message-body {
   align-items: flex-end;
 }
 
+/* 图片消息 */
 .image-content {
   max-width: 400rpx;
-  border-radius: 12rpx;
+  border-radius: var(--radius-xl);
+  border: 2rpx solid var(--border-subtle);
+  box-shadow: var(--shadow-md);
 }
 
+/* 视频消息 */
 .video-content {
   position: relative;
   width: 400rpx;
   height: 300rpx;
-  border-radius: 12rpx;
+  border-radius: var(--radius-xl);
   overflow: hidden;
   background-color: #000;
+  border: 2rpx solid var(--border-subtle);
+  box-shadow: var(--shadow-md);
 }
 
 .video-cover {
@@ -1555,13 +1656,14 @@ const scrollToBottom = () => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 80rpx;
-  height: 80rpx;
-  background-color: rgba(0, 0, 0, 0.5);
+  width: 88rpx;
+  height: 88rpx;
+  background: var(--gradient-primary);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 4rpx 20rpx rgba(168, 85, 247, 0.4);
 }
 
 .video-play-icon text {
@@ -1572,30 +1674,40 @@ const scrollToBottom = () => {
 
 .video-duration {
   position: absolute;
-  bottom: 10rpx;
-  right: 10rpx;
-  font-size: 22rpx;
+  bottom: 12rpx;
+  right: 12rpx;
+  font-size: var(--text-xs);
   color: #fff;
-  background-color: rgba(0, 0, 0, 0.5);
-  padding: 4rpx 10rpx;
-  border-radius: 4rpx;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 6rpx 14rpx;
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(4px);
 }
 
+/* 文件消息 */
 .file-content {
   display: flex;
   align-items: center;
-  background-color: var(--bg-white);
-  border-radius: 12rpx;
-  padding: 20rpx;
-  min-width: 400rpx;
+  background: var(--bg-glass);
+  backdrop-filter: var(--blur-sm);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 24rpx;
+  min-width: 380rpx;
+  transition: all var(--duration-fast);
+}
+
+.file-content:active {
+  background: var(--bg-glass-active);
 }
 
 .message-item.self .file-content {
-  background-color: var(--primary-light);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(236, 72, 153, 0.2) 100%);
+  border-color: rgba(168, 85, 247, 0.3);
 }
 
 .file-icon {
-  font-size: 60rpx;
+  font-size: 48rpx;
   margin-right: 20rpx;
 }
 
@@ -1607,8 +1719,8 @@ const scrollToBottom = () => {
 }
 
 .file-name {
-  font-size: 28rpx;
-  color: var(--text-color);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1616,15 +1728,17 @@ const scrollToBottom = () => {
 }
 
 .file-size {
-  font-size: 22rpx;
-  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   margin-top: 6rpx;
 }
 
+/* 语音消息 */
 .voice-content {
   display: flex;
   align-items: center;
-  min-width: 120rpx;
+  min-width: 140rpx;
+  padding: 4rpx 0;
 }
 
 .voice-icon {
@@ -1636,9 +1750,10 @@ const scrollToBottom = () => {
 
 .voice-wave {
   width: 6rpx;
-  background-color: var(--text-color);
-  margin-right: 4rpx;
-  border-radius: 3rpx;
+  background: var(--accent-primary);
+  margin-right: 6rpx;
+  border-radius: var(--radius-full);
+  transition: height 0.1s;
 }
 
 .voice-wave:nth-child(1) {
@@ -1657,6 +1772,18 @@ const scrollToBottom = () => {
   animation: voiceWave 0.5s ease-in-out infinite alternate;
 }
 
+.voice-icon.playing .voice-wave:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.voice-icon.playing .voice-wave:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.voice-icon.playing .voice-wave:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
 @keyframes voiceWave {
   from {
     height: 12rpx;
@@ -1667,35 +1794,47 @@ const scrollToBottom = () => {
 }
 
 .voice-duration {
-  font-size: 28rpx;
-  color: var(--text-color);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
 }
 
+/* 消息状态 */
 .message-status {
   margin-top: 8rpx;
   padding-left: 90rpx;
 }
 
 .status {
-  font-size: 22rpx;
+  font-size: var(--text-xs);
 }
 
 .status.sending {
-  color: var(--text-light);
+  color: var(--text-muted);
 }
 
 .status.read {
-  color: var(--primary-color);
+  color: var(--accent-success);
 }
 
+/* 正在输入提示 */
 .typing-hint {
-  padding: 10rpx 30rpx;
-  font-size: 24rpx;
-  color: var(--text-secondary);
+  position: relative;
+  z-index: 5;
+  padding: 12rpx 32rpx;
+  font-size: var(--text-xs);
+  color: var(--accent-tertiary);
+  background: var(--bg-glass);
+  border-top: 1rpx solid var(--border-subtle);
 }
 
+/* 输入区域 */
 .input-area {
-  background-color: #f5f5f5;
+  position: relative;
+  z-index: 50;
+  background: var(--gradient-card);
+  backdrop-filter: var(--blur-lg);
+  -webkit-backdrop-filter: var(--blur-lg);
+  border-top: 1rpx solid var(--border-subtle);
   padding: 16rpx;
   padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
 }
@@ -1703,56 +1842,105 @@ const scrollToBottom = () => {
 .input-row {
   display: flex;
   align-items: center;
+  gap: 12rpx;
 }
 
 .voice-switch {
-  padding: 16rpx;
-  font-size: 26rpx;
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
+  background: var(--bg-glass);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  transition: all var(--duration-fast);
+}
+
+.voice-switch:active {
+  background: var(--bg-glass-active);
+  color: var(--accent-primary);
 }
 
 .text-input {
   flex: 1;
-  background-color: var(--bg-white);
-  border-radius: 8rpx;
-  padding: 16rpx 24rpx;
-  font-size: 30rpx;
+  background: var(--bg-glass);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 18rpx 24rpx;
+  font-size: var(--text-md);
+  color: var(--text-primary);
+  transition: all var(--duration-fast);
+}
+
+.text-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 4rpx rgba(168, 85, 247, 0.15);
 }
 
 .voice-btn {
   flex: 1;
-  background-color: var(--bg-white);
-  border-radius: 8rpx;
-  padding: 20rpx;
+  background: var(--bg-glass);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 18rpx;
   text-align: center;
-  font-size: 28rpx;
-  color: var(--text-color);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  transition: all var(--duration-fast);
 }
 
 .voice-btn:active {
-  background-color: #d9d9d9;
+  background: var(--gradient-primary);
+  border-color: transparent;
+  color: #fff;
 }
 
 .more-btn {
-  padding: 16rpx;
-  font-size: 40rpx;
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
   color: var(--text-secondary);
+  background: var(--bg-glass);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  transition: all var(--duration-fast);
+}
+
+.more-btn:active {
+  background: var(--gradient-primary);
+  color: #fff;
+  border-color: transparent;
 }
 
 .send-btn {
-  background-color: var(--primary-color);
+  background: var(--gradient-primary);
   color: #fff;
-  font-size: 28rpx;
-  padding: 12rpx 24rpx;
-  border-radius: 8rpx;
-  margin-left: 16rpx;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  padding: 14rpx 28rpx;
+  border-radius: var(--radius-lg);
+  border: none;
+  box-shadow: var(--shadow-glow);
+  transition: all var(--duration-fast);
 }
 
+.send-btn:active {
+  transform: scale(0.95);
+}
+
+/* 更多面板 */
 .more-panel {
   display: flex;
   flex-wrap: wrap;
-  padding: 30rpx 0;
-  background-color: #f5f5f5;
+  padding: 24rpx 12rpx;
+  background: var(--bg-elevated);
+  border-top: 1rpx solid var(--border-subtle);
 }
 
 .panel-item {
@@ -1760,24 +1948,52 @@ const scrollToBottom = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20rpx;
+  padding: 16rpx;
 }
 
 .panel-icon {
   width: 100rpx;
   height: 100rpx;
-  background-color: var(--bg-white);
-  border-radius: 16rpx;
+  background: var(--bg-glass);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-xl);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 36rpx;
-  color: var(--text-secondary);
-  margin-bottom: 16rpx;
+  font-size: 40rpx;
+  margin-bottom: 12rpx;
+  transition: all var(--duration-fast);
+}
+
+.panel-item:active .panel-icon {
+  transform: scale(0.95);
+  border-color: var(--accent-primary);
+}
+
+/* 各个图标的渐变背景 */
+.panel-icon.icon-album {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(236, 72, 153, 0.15) 100%);
+}
+
+.panel-icon.icon-camera {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+}
+
+.panel-icon.icon-video {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(245, 158, 11, 0.15) 100%);
+}
+
+.panel-icon.icon-file {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(34, 211, 238, 0.15) 100%);
+}
+
+.panel-icon.icon-call {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(236, 72, 153, 0.2) 100%);
+  box-shadow: 0 0 20rpx rgba(168, 85, 247, 0.2);
 }
 
 .panel-text {
-  font-size: 24rpx;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
 }
 </style>

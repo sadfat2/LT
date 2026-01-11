@@ -1,54 +1,163 @@
 <template>
   <view class="profile-page">
+    <!-- 背景装饰 -->
+    <view class="bg-decoration">
+      <view class="orb orb-1"></view>
+      <view class="orb orb-2"></view>
+      <view class="orb orb-3"></view>
+    </view>
+
+    <!-- 页面头部 -->
+    <view class="page-header">
+      <text class="page-title">我</text>
+    </view>
+
     <!-- 用户信息卡片 -->
     <view class="user-card">
-      <view class="avatar-area" @click="changeAvatar">
-        <image
-          class="avatar-large"
-          :src="user?.avatar || '/static/images/default-avatar.svg'"
-          mode="aspectFill"
-        />
-        <view class="avatar-edit">
-          <text class="edit-text">编辑</text>
+      <view class="user-card-bg"></view>
+      <view class="user-card-content">
+        <view class="avatar-section" @click="changeAvatar">
+          <view class="avatar-container">
+            <image
+              class="user-avatar"
+              :src="user?.avatar || '/static/images/default-avatar.svg'"
+              mode="aspectFill"
+            />
+            <view class="avatar-edit">
+              <text class="edit-icon">✏️</text>
+            </view>
+          </view>
         </view>
-      </view>
-
-      <view class="user-info">
-        <view class="nickname-row" @click="editNickname">
-          <text class="nickname">{{ user?.nickname || '未设置昵称' }}</text>
-          <text class="arrow">></text>
+        <view class="user-info">
+          <view class="nickname-row" @click="editNickname">
+            <text class="nickname">{{ user?.nickname || '未设置昵称' }}</text>
+            <text class="edit-arrow">›</text>
+          </view>
+          <view class="account-row">
+            <text class="account-label">账号</text>
+            <text class="account-value">{{ user?.account }}</text>
+          </view>
         </view>
-        <text class="account">账号: {{ user?.account }}</text>
       </view>
     </view>
 
-    <!-- 签名 -->
+    <!-- 个性签名 -->
     <view class="section">
-      <view class="section-item" @click="editSignature">
-        <text class="label">个性签名</text>
-        <view class="value-row">
-          <text class="value">{{ user?.signature || '未设置' }}</text>
-          <text class="arrow">></text>
+      <view class="section-title">
+        <text>个性签名</text>
+      </view>
+      <view class="section-card">
+        <view class="section-item" @click="editSignature">
+          <view class="item-content">
+            <text class="item-icon">💭</text>
+            <text class="item-text">{{ user?.signature || '点击设置个性签名' }}</text>
+          </view>
+          <text class="item-arrow">›</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 设置区域 -->
+    <view class="section">
+      <view class="section-title">
+        <text>设置</text>
+      </view>
+      <view class="section-card">
+        <view class="section-item">
+          <view class="item-content">
+            <text class="item-icon">🔔</text>
+            <text class="item-label">消息通知</text>
+          </view>
+          <switch
+            class="item-switch"
+            :checked="notificationEnabled"
+            @change="toggleNotification"
+            color="#a855f7"
+          />
+        </view>
+        <view class="section-item">
+          <view class="item-content">
+            <text class="item-icon">🌙</text>
+            <text class="item-label">深色模式</text>
+          </view>
+          <view class="item-badge">已启用</view>
+        </view>
+        <view class="section-item">
+          <view class="item-content">
+            <text class="item-icon">ℹ️</text>
+            <text class="item-label">关于</text>
+          </view>
+          <text class="item-version">v1.0.0</text>
         </view>
       </view>
     </view>
 
     <!-- 退出登录 -->
     <view class="logout-section">
-      <button class="logout-btn" @click="handleLogout">退出登录</button>
+      <button class="logout-btn" @click="handleLogout">
+        <text class="logout-icon">🚪</text>
+        <text class="logout-text">退出登录</text>
+      </button>
     </view>
+
+    <!-- 底部版权 -->
+    <view class="footer">
+      <text class="footer-text">Nebula Chat © 2024</text>
+    </view>
+
+    <!-- 自定义底部导航 -->
+    <CustomTabBar :current="2" />
+
+    <!-- 修改昵称弹窗 -->
+    <InputModal
+      v-model:visible="showNicknameModal"
+      title="修改昵称"
+      :value="user?.nickname || ''"
+      placeholder="请输入昵称"
+      :maxlength="20"
+      :required="true"
+      @confirm="handleNicknameConfirm"
+    />
+
+    <!-- 修改签名弹窗 -->
+    <InputModal
+      v-model:visible="showSignatureModal"
+      title="修改签名"
+      :value="user?.signature || ''"
+      placeholder="请输入个性签名"
+      :maxlength="50"
+      @confirm="handleSignatureConfirm"
+    />
+
+    <!-- 退出登录确认弹窗 -->
+    <ConfirmModal
+      v-model:visible="showLogoutModal"
+      title="退出登录"
+      content="确定要退出登录吗？"
+      icon="🚪"
+      type="danger"
+      confirmText="退出"
+      @confirm="confirmLogout"
+    />
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '../../store/user'
 import { userApi } from '../../api'
+import CustomTabBar from '../../components/CustomTabBar.vue'
+import InputModal from '../../components/InputModal.vue'
+import ConfirmModal from '../../components/ConfirmModal.vue'
 
 const userStore = useUserStore()
 
 const user = computed(() => userStore.user)
+const notificationEnabled = ref(true)
+const showNicknameModal = ref(false)
+const showSignatureModal = ref(false)
+const showLogoutModal = ref(false)
 
 onShow(() => {
   if (userStore.isLoggedIn) {
@@ -75,95 +184,176 @@ const changeAvatar = () => {
 }
 
 const editNickname = () => {
-  uni.showModal({
-    title: '修改昵称',
-    editable: true,
-    placeholderText: '请输入昵称',
-    content: user.value?.nickname || '',
-    success: async (res) => {
-      if (res.confirm && res.content) {
-        try {
-          await userStore.updateProfile({ nickname: res.content })
-          uni.showToast({ title: '昵称更新成功', icon: 'success' })
-        } catch (error) {
-          console.error('更新昵称失败', error)
-        }
-      }
-    }
-  })
+  showNicknameModal.value = true
+}
+
+const handleNicknameConfirm = async (value: string) => {
+  try {
+    await userStore.updateProfile({ nickname: value })
+    uni.showToast({ title: '昵称已更新', icon: 'success' })
+  } catch (error) {
+    console.error('更新昵称失败', error)
+    uni.showToast({ title: '更新失败', icon: 'none' })
+  }
 }
 
 const editSignature = () => {
-  uni.showModal({
-    title: '修改签名',
-    editable: true,
-    placeholderText: '请输入个性签名',
-    content: user.value?.signature || '',
-    success: async (res) => {
-      if (res.confirm) {
-        try {
-          await userStore.updateProfile({ signature: res.content || '' })
-          uni.showToast({ title: '签名更新成功', icon: 'success' })
-        } catch (error) {
-          console.error('更新签名失败', error)
-        }
-      }
-    }
+  showSignatureModal.value = true
+}
+
+const handleSignatureConfirm = async (value: string) => {
+  try {
+    await userStore.updateProfile({ signature: value })
+    uni.showToast({ title: '签名已更新', icon: 'success' })
+  } catch (error) {
+    console.error('更新签名失败', error)
+    uni.showToast({ title: '更新失败', icon: 'none' })
+  }
+}
+
+const toggleNotification = (e: any) => {
+  notificationEnabled.value = e.detail.value
+  uni.showToast({
+    title: notificationEnabled.value ? '已开启通知' : '已关闭通知',
+    icon: 'none'
   })
 }
 
 const handleLogout = () => {
-  uni.showModal({
-    title: '提示',
-    content: '确定要退出登录吗？',
-    success: (res) => {
-      if (res.confirm) {
-        userStore.logout()
-      }
-    }
-  })
+  showLogoutModal.value = true
+}
+
+const confirmLogout = () => {
+  userStore.logout()
 }
 </script>
 
 <style scoped>
 .profile-page {
   min-height: 100vh;
-  background-color: var(--bg-color);
+  background: var(--bg-deep);
+  position: relative;
+  padding-bottom: calc(110rpx + env(safe-area-inset-bottom));
 }
 
-.user-card {
+/* 背景装饰 */
+.bg-decoration {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100rpx);
+}
+
+.orb-1 {
+  width: 500rpx;
+  height: 500rpx;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.3) 0%, transparent 70%);
+  top: -150rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.5;
+}
+
+.orb-2 {
+  width: 300rpx;
+  height: 300rpx;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.25) 0%, transparent 70%);
+  top: 400rpx;
+  right: -100rpx;
+  opacity: 0.4;
+}
+
+.orb-3 {
+  width: 250rpx;
+  height: 250rpx;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.2) 0%, transparent 70%);
+  bottom: 200rpx;
+  left: -80rpx;
+  opacity: 0.4;
+}
+
+/* 页面头部 */
+.page-header {
+  position: relative;
+  z-index: 10;
+  padding: 0 32rpx;
+  padding-top: calc(env(safe-area-inset-top) + 20rpx);
+  height: calc(100rpx + env(safe-area-inset-top));
   display: flex;
   align-items: center;
-  padding: 40rpx 30rpx;
-  background-color: var(--bg-white);
-  margin-bottom: 20rpx;
 }
 
-.avatar-area {
+.page-title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+}
+
+/* 用户信息卡片 */
+.user-card {
   position: relative;
-  margin-right: 30rpx;
+  z-index: 5;
+  margin: 0 24rpx 32rpx;
+  border-radius: var(--radius-2xl);
+  overflow: hidden;
 }
 
-.avatar-large {
-  width: 130rpx;
-  height: 130rpx;
-  border-radius: 12rpx;
+.user-card-bg {
+  position: absolute;
+  inset: 0;
+  background: var(--gradient-primary);
+  opacity: 0.15;
+}
+
+.user-card-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 40rpx 32rpx;
+  background: var(--gradient-card);
+  backdrop-filter: var(--blur-lg);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-2xl);
+}
+
+.avatar-section {
+  margin-right: 28rpx;
+}
+
+.avatar-container {
+  position: relative;
+}
+
+.user-avatar {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: var(--radius-2xl);
+  border: 3rpx solid var(--border-accent);
+  box-shadow: 0 0 30rpx rgba(168, 85, 247, 0.3);
 }
 
 .avatar-edit {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  padding: 6rpx 0;
-  border-radius: 0 0 12rpx 12rpx;
+  bottom: -8rpx;
+  right: -8rpx;
+  width: 48rpx;
+  height: 48rpx;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3rpx solid var(--bg-deep);
 }
 
-.edit-text {
-  display: block;
-  text-align: center;
-  color: #fff;
+.edit-icon {
   font-size: 20rpx;
 }
 
@@ -174,73 +364,179 @@ const handleLogout = () => {
 .nickname-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16rpx;
+  margin-bottom: 12rpx;
 }
 
 .nickname {
-  font-size: 38rpx;
-  font-weight: bold;
-  color: var(--text-color);
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  margin-right: 8rpx;
 }
 
-.account {
-  font-size: 26rpx;
+.edit-arrow {
+  font-size: var(--text-lg);
+  color: var(--text-muted);
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.account-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: 4rpx 12rpx;
+  background: var(--bg-glass);
+  border-radius: var(--radius-sm);
+}
+
+.account-value {
+  font-size: var(--text-sm);
   color: var(--text-secondary);
+  font-family: var(--font-mono);
 }
 
-.arrow {
-  color: var(--text-light);
-  font-size: 28rpx;
-}
-
+/* 区块样式 */
 .section {
-  background-color: var(--bg-white);
-  margin-bottom: 20rpx;
+  position: relative;
+  z-index: 5;
+  margin: 0 24rpx 24rpx;
+}
+
+.section-title {
+  padding: 0 12rpx 16rpx;
+}
+
+.section-title text {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 2rpx;
+}
+
+.section-card {
+  background: var(--gradient-card);
+  backdrop-filter: var(--blur-md);
+  border: 1rpx solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
 }
 
 .section-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 30rpx;
-  border-bottom: 1rpx solid var(--border-color);
+  padding: 28rpx 24rpx;
+  border-bottom: 1rpx solid var(--border-subtle);
+  transition: all var(--duration-fast);
 }
 
 .section-item:last-child {
   border-bottom: none;
 }
 
-.label {
-  font-size: 30rpx;
-  color: var(--text-color);
+.section-item:active {
+  background: var(--bg-glass-active);
 }
 
-.value-row {
+.item-content {
   display: flex;
   align-items: center;
+  flex: 1;
+  overflow: hidden;
 }
 
-.value {
-  font-size: 28rpx;
+.item-icon {
+  font-size: 36rpx;
+  margin-right: 20rpx;
+}
+
+.item-label {
+  font-size: var(--text-md);
+  color: var(--text-primary);
+}
+
+.item-text {
+  font-size: var(--text-md);
   color: var(--text-secondary);
-  margin-right: 10rpx;
-  max-width: 400rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.item-arrow {
+  font-size: var(--text-xl);
+  color: var(--text-muted);
+}
+
+.item-switch {
+  transform: scale(0.85);
+}
+
+.item-badge {
+  font-size: var(--text-xs);
+  color: var(--accent-success);
+  padding: 6rpx 16rpx;
+  background: rgba(16, 185, 129, 0.15);
+  border-radius: var(--radius-full);
+}
+
+.item-version {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* 退出登录 */
 .logout-section {
-  padding: 60rpx 30rpx;
+  position: relative;
+  z-index: 5;
+  padding: 32rpx 24rpx;
 }
 
 .logout-btn {
-  background-color: var(--bg-white);
-  color: var(--danger-color);
-  border: none;
-  border-radius: 8rpx;
-  padding: 24rpx 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  width: 100%;
+  height: 96rpx;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1rpx solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-xl);
+  transition: all var(--duration-fast);
+}
+
+.logout-btn:active {
+  background: rgba(239, 68, 68, 0.2);
+  transform: scale(0.98);
+}
+
+.logout-icon {
   font-size: 32rpx;
+}
+
+.logout-text {
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
+  color: var(--accent-danger);
+}
+
+/* 底部版权 */
+.footer {
+  position: relative;
+  z-index: 5;
+  padding: 40rpx;
+  text-align: center;
+}
+
+.footer-text {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  letter-spacing: 1rpx;
 }
 </style>
