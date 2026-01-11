@@ -125,9 +125,17 @@ EOF
     # 禁用默认配置（如果存在）
     rm -f /etc/nginx/sites-enabled/default
 
-    # 测试并重载 Nginx
+    # 测试配置
     nginx -t
-    systemctl reload nginx
+
+    # 确保 Nginx 正在运行
+    if ! systemctl is-active --quiet nginx; then
+        log_info "启动 Nginx 服务..."
+        systemctl start nginx
+        systemctl enable nginx
+    else
+        systemctl reload nginx
+    fi
 
     log_info "临时 Nginx 配置完成"
 }
@@ -138,6 +146,9 @@ request_certificate() {
     local email=$2
 
     log_info "申请 SSL 证书..."
+
+    # 确保 webroot 目录存在
+    mkdir -p /var/www/certbot
 
     # 使用 webroot 模式申请证书
     certbot certonly \

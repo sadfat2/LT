@@ -11,7 +11,7 @@ set -e
 # 项目根目录（整个 LT 项目上传到 /opt/LT）
 DEPLOY_DIR="/opt/LT"
 # chat-app 目录
-CHAT_APP_DIR="$CHAT_APP_DIR"
+CHAT_APP_DIR="$DEPLOY_DIR/chat-app"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 颜色输出
