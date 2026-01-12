@@ -5,10 +5,25 @@
 
 // ICE 服务器配置
 const ICE_SERVERS: RTCIceServer[] = [
+  // STUN 服务器
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
+  // 免费 TURN 服务器 (Open Relay Project)
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
 ]
 
 // 音频配置模式
@@ -22,7 +37,7 @@ const AUDIO_CONSTRAINTS: Record<AudioMode, MediaTrackConstraints> = {
     noiseSuppression: true,           // 强制启用降噪
     autoGainControl: true,            // 强制启用自动增益
     sampleRate: { ideal: 48000 },
-    channelCount: { exact: 1 },       // 强制单声道（减少回声）
+    channelCount: { ideal: 1 },       // 优先单声道（减少回声）
     sampleSize: { ideal: 16 },
     latency: { ideal: 0.01 },
     // Google Chrome 高级音频处理（实验性但广泛支持）
@@ -47,7 +62,7 @@ const AUDIO_CONSTRAINTS: Record<AudioMode, MediaTrackConstraints> = {
     noiseSuppression: true,
     autoGainControl: false,           // 不自动调节增益
     sampleRate: { ideal: 48000 },
-    channelCount: { exact: 1 },
+    channelCount: { ideal: 1 },
     latency: { ideal: 0.02 },
   },
 }
@@ -306,7 +321,8 @@ export class WebRTCManager {
     }
 
     // 设置远程描述（对方发来的 Offer 可能包含优化参数）
-    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
+    // 直接传入对象，避免使用已弃用的 new RTCSessionDescription()
+    await this.peerConnection.setRemoteDescription(offer)
 
     const answer = await this.peerConnection.createAnswer()
 
@@ -329,7 +345,8 @@ export class WebRTCManager {
       throw new Error('PeerConnection 未初始化')
     }
 
-    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
+    // 直接传入对象，避免使用已弃用的 new RTCSessionDescription()
+    await this.peerConnection.setRemoteDescription(answer)
   }
 
   /**
@@ -341,7 +358,8 @@ export class WebRTCManager {
     }
 
     try {
-      await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+      // 直接传入对象，避免使用已弃用的 new RTCIceCandidate()
+      await this.peerConnection.addIceCandidate(candidate)
     } catch (error) {
       console.warn('添加 ICE 候选失败:', error)
     }

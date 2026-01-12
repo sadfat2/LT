@@ -42,6 +42,15 @@ module.exports = {
       'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'text/plain'
     ],
-    allowedVideoTypes: ['video/mp4', 'video/quicktime', 'video/webm']
+    allowedVideoTypes: [
+      'video/mp4',
+      'video/quicktime',  // MOV
+      'video/webm',
+      'video/3gpp',       // 3GP (安卓常用)
+      'video/3gpp2',      // 3G2
+      'video/x-m4v',      // M4V (iOS 常用)
+      'video/x-msvideo',  // AVI
+      'video/x-matroska', // MKV
+    ]
   }
 };

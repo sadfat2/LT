@@ -833,7 +833,7 @@ const chooseVideo = () => {
   // #ifdef H5
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = 'video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm'
+  input.accept = 'video/mp4,video/quicktime,video/webm,video/3gpp,video/x-m4v,video/*'
   input.onchange = async (e: any) => {
     const file = e.target.files[0]
     if (!file) return

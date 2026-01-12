@@ -81,7 +81,7 @@ const videoFilter = (req, file, cb) => {
 // 头像上传
 const avatarUpload = multer({
   storage: createStorage('avatars'),
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB（支持手机高清照片）
   fileFilter: imageFilter
 });
 
