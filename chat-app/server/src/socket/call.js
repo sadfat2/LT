@@ -17,8 +17,27 @@ const generateCallId = (userId1, userId2) => {
   return `call_${sorted[0]}_${sorted[1]}_${Date.now()}`;
 };
 
+// 清理用户的过期通话记录（超过60秒未接通的通话）
+const cleanupStaleCalls = (userId) => {
+  const now = Date.now();
+  const staleTimeout = 60 * 1000; // 60秒
+
+  for (const [callId, call] of activeCalls) {
+    if ((call.callerId === userId || call.receiverId === userId)) {
+      // 如果通话创建超过60秒且未接通，清理掉
+      if (!call.connectedTime && (now - call.startTime) > staleTimeout) {
+        console.log(`[Call] 清理过期通话: ${callId}`);
+        activeCalls.delete(callId);
+      }
+    }
+  }
+};
+
 // 检查用户是否在通话中
 const isUserInCall = (userId) => {
+  // 先清理过期的通话记录
+  cleanupStaleCalls(userId);
+
   for (const [callId, call] of activeCalls) {
     if ((call.callerId === userId || call.receiverId === userId) &&
         ['calling', 'ringing', 'connected'].includes(call.status)) {

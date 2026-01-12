@@ -331,7 +331,7 @@ export const useCallStore = defineStore('call', () => {
 
     uni.showToast({ title: '对方已拒绝', icon: 'none' })
 
-    setTimeout(() => resetCallState(), 2000)
+    setTimeout(() => resetCallState(), 500)
   }
 
   /**
@@ -348,7 +348,7 @@ export const useCallStore = defineStore('call', () => {
     endReason.value = (data.reason as CallEndReason) || 'hangup'
     status.value = 'ended'
 
-    setTimeout(() => resetCallState(), 2000)
+    setTimeout(() => resetCallState(), 500)
   }
 
   /**
@@ -365,7 +365,7 @@ export const useCallStore = defineStore('call', () => {
 
     uni.showToast({ title: '对方无应答', icon: 'none' })
 
-    setTimeout(() => resetCallState(), 2000)
+    setTimeout(() => resetCallState(), 500)
   }
 
   /**
@@ -379,7 +379,7 @@ export const useCallStore = defineStore('call', () => {
 
     uni.showToast({ title: '对方已取消', icon: 'none' })
 
-    setTimeout(() => resetCallState(), 2000)
+    setTimeout(() => resetCallState(), 500)
   }
 
   // ==================== WebRTC 信令处理 ====================

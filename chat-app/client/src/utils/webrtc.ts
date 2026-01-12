@@ -300,16 +300,14 @@ export class WebRTCManager {
       offerToReceiveVideo: false,
     })
 
-    // 先设置原始 SDP（现代浏览器不允许修改后再设置）
+    // 设置本地描述
     await this.peerConnection.setLocalDescription(offer)
 
-    // 优化音频编码参数
+    // 优化音频编码参数（通过 RTP Sender 而非 SDP）
     await this.optimizeAudioCodec()
 
-    // 返回优化后的 SDP 用于发送给对方
-    // 对方在 setRemoteDescription 时会应用这些优化参数
-    const optimizedSdp = this.mungeOpusSDP(offer.sdp || '')
-    return { ...offer, sdp: optimizedSdp }
+    // 返回 localDescription（包含 ICE candidates）
+    return this.peerConnection.localDescription!
   }
 
   /**
@@ -320,21 +318,19 @@ export class WebRTCManager {
       throw new Error('PeerConnection 未初始化')
     }
 
-    // 设置远程描述（对方发来的 Offer 可能包含优化参数）
-    // 直接传入对象，避免使用已弃用的 new RTCSessionDescription()
+    // 设置远程描述
     await this.peerConnection.setRemoteDescription(offer)
 
     const answer = await this.peerConnection.createAnswer()
 
-    // 先设置原始 SDP（现代浏览器不允许修改后再设置）
+    // 设置本地描述
     await this.peerConnection.setLocalDescription(answer)
 
-    // 优化音频编码参数
+    // 优化音频编码参数（通过 RTP Sender 而非 SDP）
     await this.optimizeAudioCodec()
 
-    // 返回优化后的 SDP 用于发送给对方
-    const optimizedSdp = this.mungeOpusSDP(answer.sdp || '')
-    return { ...answer, sdp: optimizedSdp }
+    // 返回 localDescription
+    return this.peerConnection.localDescription!
   }
 
   /**
