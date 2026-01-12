@@ -8,7 +8,9 @@
 set -e
 
 # 配置
-DEPLOY_DIR="/opt/chat-app"
+DEPLOY_DIR="/opt/LT"
+CHAT_APP_DIR="$DEPLOY_DIR/chat-app"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="$DEPLOY_DIR/backups"
 RETENTION_DAYS=7
 
@@ -49,15 +51,16 @@ show_help() {
     echo ""
     echo "定时备份（每天凌晨 3 点）:"
     echo "  crontab -e"
-    echo "  0 3 * * * /opt/chat-app/single-deploy/backup.sh --all >> /var/log/chat-backup.log 2>&1"
+    echo "  0 3 * * * /opt/LT/chat-app/single-deploy/backup.sh --all >> /var/log/chat-backup.log 2>&1"
 }
 
 # 加载环境变量
 load_env() {
-    if [ -f "$DEPLOY_DIR/.env" ]; then
-        export $(grep -v '^#' "$DEPLOY_DIR/.env" | xargs)
+    local env_file="$SCRIPT_DIR/.env"
+    if [ -f "$env_file" ]; then
+        export $(grep -v '^#' "$env_file" | xargs)
     else
-        log_error ".env 文件不存在"
+        log_error ".env 文件不存在: $env_file"
         exit 1
     fi
 }
@@ -102,7 +105,7 @@ backup_uploads() {
 
     local timestamp=$(date +%Y%m%d_%H%M%S)
     local backup_file="$BACKUP_DIR/uploads/uploads_$timestamp.tar.gz"
-    local uploads_dir="$DEPLOY_DIR/chat-app/server/uploads"
+    local uploads_dir="$CHAT_APP_DIR/server/uploads"
 
     if [ ! -d "$uploads_dir" ]; then
         log_warn "上传目录不存在: $uploads_dir"
@@ -116,7 +119,7 @@ backup_uploads() {
     fi
 
     # 创建压缩包
-    tar -czf "$backup_file" -C "$DEPLOY_DIR/chat-app/server" uploads/
+    tar -czf "$backup_file" -C "$CHAT_APP_DIR/server" uploads/
 
     if [ $? -eq 0 ]; then
         local size=$(du -h "$backup_file" | cut -f1)
@@ -251,13 +254,13 @@ restore_uploads() {
     log_info "恢复备份: $backup_file"
 
     # 备份当前上传目录
-    local uploads_dir="$DEPLOY_DIR/chat-app/server/uploads"
+    local uploads_dir="$CHAT_APP_DIR/server/uploads"
     if [ -d "$uploads_dir" ]; then
         mv "$uploads_dir" "${uploads_dir}_old_$(date +%Y%m%d_%H%M%S)"
     fi
 
     # 恢复
-    tar -xzf "$backup_file" -C "$DEPLOY_DIR/chat-app/server/"
+    tar -xzf "$backup_file" -C "$CHAT_APP_DIR/server/"
 
     if [ $? -eq 0 ]; then
         log_info "上传文件恢复完成"

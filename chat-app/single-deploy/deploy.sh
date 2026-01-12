@@ -83,11 +83,12 @@ check_dependencies() {
 
 # 加载环境变量
 load_env() {
-    if [ -f "$DEPLOY_DIR/.env" ]; then
-        export $(grep -v '^#' "$DEPLOY_DIR/.env" | xargs)
+    local env_file="$SCRIPT_DIR/.env"
+    if [ -f "$env_file" ]; then
+        export $(grep -v '^#' "$env_file" | xargs)
         log_info "已加载环境变量"
     else
-        log_error ".env 文件不存在: $DEPLOY_DIR/.env"
+        log_error ".env 文件不存在: $env_file"
         log_error "请先复制 .env.example 并配置"
         exit 1
     fi
@@ -128,8 +129,8 @@ interactive_config() {
     JWT_SECRET=$(openssl rand -base64 32)
     log_info "已自动生成 JWT 密钥"
 
-    # 保存配置
-    cat > "$DEPLOY_DIR/.env" << EOF
+    # 保存配置到 single-deploy 目录
+    cat > "$SCRIPT_DIR/.env" << EOF
 # 域名配置
 DOMAIN=$DOMAIN
 
@@ -149,7 +150,7 @@ ALLOWED_ORIGINS=https://$DOMAIN
 NODE_ENV=production
 EOF
 
-    log_info "配置已保存到 $DEPLOY_DIR/.env"
+    log_info "配置已保存到 $SCRIPT_DIR/.env"
 }
 
 # 克隆代码（如果项目不存在且提供了 Git 仓库地址）
