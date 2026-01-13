@@ -65,6 +65,7 @@ npm run build:h5        # 构建 H5
 | 后端入口 | `chat-app/server/src/app.js` |
 | Socket 事件处理 | `chat-app/server/src/socket/index.js` |
 | 通话信令处理 | `chat-app/server/src/socket/call.js` |
+| WebRTC TURN 代理 | `chat-app/server/src/routes/webrtc.js` |
 | 数据库模型 | `chat-app/server/src/models/` |
 | 路由定义 | `chat-app/server/src/routes/` |
 | 上传配置 | `chat-app/server/src/config/index.js` |
@@ -169,11 +170,14 @@ npm run build:h5        # 构建 H5
 - `DELETE /api/groups/:id` - 解散群聊（仅群主）
 
 ### 上传
-- `POST /api/upload/avatar` - 上传头像 (2MB 限制)
+- `POST /api/upload/avatar` - 上传头像 (5MB 限制，支持手机高清照片)
 - `POST /api/upload/image` - 上传图片
 - `POST /api/upload/voice` - 上传语音 `{ duration }` (5MB 限制, 支持 mp3/wav/aac/webm/ogg)
 - `POST /api/upload/file` - 上传文件 (20MB 限制, 支持 pdf/doc/docx/xls/xlsx/ppt/pptx/txt)
-- `POST /api/upload/video` - 上传视频 `{ duration }` (50MB 限制, 支持 mp4/mov/avi/mkv/webm)
+- `POST /api/upload/video` - 上传视频 `{ duration }` (50MB 限制, 支持 mp4/mov/webm/3gpp/m4v/avi/mkv)
+
+### WebRTC
+- `GET /api/webrtc/turn-credentials` - 获取 TURN 服务器凭据（通过 Cloudflare 代理）
 
 ## 数据库表结构
 
@@ -366,7 +370,7 @@ GET /api/conversations/search/all?keyword=搜索关键词
 
 - 需要 **HTTPS** 环境（localhost 除外）
 - 首次使用需授权麦克风权限
-- 复杂网络环境可能需要配置 TURN 服务器
+- 系统自动获取 Cloudflare TURN 凭据，支持复杂网络环境
 - **推荐使用耳机**进行通话，可有效避免回声和啸叫
 
 ### 音频质量优化
@@ -392,15 +396,24 @@ private audioMode: AudioMode = 'optimized'  // 默认启用全部音频处理
 
 ### ICE 服务器配置
 
-默认使用 Google 公共 STUN 服务器，如需自定义，修改 `client/src/utils/webrtc.ts`：
+系统默认使用 Google 公共 STUN 服务器，并通过后端代理自动获取 Cloudflare TURN 凭据：
 
 ```typescript
+// 静态 STUN 服务器（client/src/utils/webrtc.ts）
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
-  // 添加 TURN 服务器（用于复杂网络环境）
-  // { urls: 'turn:your-turn-server', username: '...', credential: '...' }
+  { urls: 'stun:stun1.l.google.com:19302' },
 ]
+
+// TURN 凭据通过后端代理动态获取
+// GET /api/webrtc/turn-credentials -> Cloudflare TURN
 ```
+
+**TURN 服务器工作原理：**
+1. 前端调用 `/api/webrtc/turn-credentials` 获取凭据
+2. 后端从 `https://speed.cloudflare.com/turn-creds` 获取并缓存（5分钟）
+3. 返回包含 STUN/TURN URLs、用户名和凭据的 ICE 服务器配置
+4. 适用于复杂 NAT 环境（如移动网络、企业防火墙）
 
 ### 局域网开发测试
 
@@ -458,6 +471,9 @@ docker-compose logs -f server 2>&1 | grep -E "(Socket|message|error)"
 
 # 监控语音通话相关日志
 docker-compose logs -f server 2>&1 | grep -E "(call|webrtc|通话)"
+
+# 测试 TURN 凭据获取
+curl -s http://localhost:3000/api/webrtc/turn-credentials -H "Authorization: Bearer <token>" | jq .
 ```
 
 ### 语音通话测试

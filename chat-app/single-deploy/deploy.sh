@@ -151,6 +151,18 @@ NODE_ENV=production
 EOF
 
     log_info "配置已保存到 $SCRIPT_DIR/.env"
+
+    # 同时生成前端配置
+    local frontend_env="$CHAT_APP_DIR/client/.env"
+    if [ -d "$CHAT_APP_DIR/client" ]; then
+        cat > "$frontend_env" << EOF
+# 前端环境配置（由 deploy.sh 自动生成）
+VITE_API_URL=https://$DOMAIN
+VITE_SOCKET_URL=https://$DOMAIN
+VITE_CDN_URL=https://$DOMAIN
+EOF
+        log_info "前端配置已保存到 $frontend_env"
+    fi
 }
 
 # 克隆代码（如果项目不存在且提供了 Git 仓库地址）
@@ -192,23 +204,41 @@ pull_code() {
     log_info "代码更新完成"
 }
 
-# 检查前端环境配置
+# 检查并生成前端环境配置
 check_frontend_env() {
     log_step "检查前端环境配置..."
 
     local env_file="$CHAT_APP_DIR/client/.env"
-    local env_example="$CHAT_APP_DIR/client/.env.example"
 
+    # 如果不存在，自动从 DOMAIN 生成
     if [ ! -f "$env_file" ]; then
-        log_error "前端 .env 文件不存在: $env_file"
-        if [ -f "$env_example" ]; then
-            log_info "请复制 .env.example 并配置: cp $env_example $env_file"
+        log_info "自动生成前端环境配置..."
+        cat > "$env_file" << EOF
+# 前端环境配置（由 deploy.sh 自动生成）
+VITE_API_URL=https://$DOMAIN
+VITE_SOCKET_URL=https://$DOMAIN
+VITE_CDN_URL=https://$DOMAIN
+EOF
+        log_info "前端环境配置已生成: $env_file"
+    else
+        # 文件存在，检查域名是否正确
+        local current_url=$(grep "VITE_API_URL" "$env_file" | cut -d'=' -f2)
+        if [[ "$current_url" != "https://$DOMAIN" ]]; then
+            log_warn "前端配置的域名与当前 DOMAIN 不一致"
+            log_warn "  当前配置: $current_url"
+            log_warn "  期望配置: https://$DOMAIN"
+            read -p "是否更新前端配置？(y/n) " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                cat > "$env_file" << EOF
+# 前端环境配置（由 deploy.sh 自动生成）
+VITE_API_URL=https://$DOMAIN
+VITE_SOCKET_URL=https://$DOMAIN
+VITE_CDN_URL=https://$DOMAIN
+EOF
+                log_info "前端环境配置已更新"
+            fi
         fi
-        log_info "需要配置的变量:"
-        log_info "  VITE_API_URL=https://$DOMAIN"
-        log_info "  VITE_SOCKET_URL=https://$DOMAIN"
-        log_info "  VITE_CDN_URL=https://$DOMAIN"
-        exit 1
     fi
 
     log_info "前端环境配置检查通过"
