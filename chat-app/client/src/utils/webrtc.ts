@@ -3,28 +3,36 @@
  * 处理点对点音频通话的核心逻辑
  */
 
-// ICE 服务器配置
-const ICE_SERVERS: RTCIceServer[] = [
-  // STUN 服务器
+// ICE 服务器配置（包含 STUN 和 TURN）
+// TURN 服务器用于复杂网络环境下的中继
+let ICE_SERVERS: RTCIceServer[] = [
+  // Google STUN 服务器
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  // 免费 TURN 服务器 (Open Relay Project)
-  {
-    urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
 ]
+
+// 动态获取 Cloudflare TURN 凭据
+let turnCredentialsFetched = false
+const fetchTurnCredentials = async (): Promise<void> => {
+  if (turnCredentialsFetched) return
+
+  try {
+    const response = await fetch('https://speed.cloudflare.com/turn-creds')
+    if (response.ok) {
+      const data = await response.json()
+      if (data.iceServers && Array.isArray(data.iceServers)) {
+        ICE_SERVERS = [
+          ...ICE_SERVERS,
+          ...data.iceServers
+        ]
+        turnCredentialsFetched = true
+        console.log('[WebRTC] 已获取 Cloudflare TURN 凭据')
+      }
+    }
+  } catch (error) {
+    console.warn('[WebRTC] 获取 TURN 凭据失败，使用 STUN 模式:', error)
+  }
+}
 
 // 音频配置模式
 export type AudioMode = 'optimized' | 'raw' | 'balanced'
@@ -195,6 +203,9 @@ export class WebRTCManager {
    * @param mode 可选的音频模式覆盖
    */
   async requestAudioStream(mode?: AudioMode): Promise<MediaStream> {
+    // 预先获取 TURN 凭据（不阻塞，失败也继续）
+    fetchTurnCredentials().catch(() => {})
+
     const audioMode = mode || this.audioMode
     const constraints = AUDIO_CONSTRAINTS[audioMode]
 
@@ -247,12 +258,21 @@ export class WebRTCManager {
     // 监听 ICE 候选
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log('[WebRTC] 发现 ICE 候选:', event.candidate.type, event.candidate.address)
         this.callbacks.onIceCandidate?.(event.candidate)
+      } else {
+        console.log('[WebRTC] ICE 候选收集完成')
       }
+    }
+
+    // 监听 ICE 收集状态
+    this.peerConnection.onicegatheringstatechange = () => {
+      console.log('[WebRTC] ICE 收集状态:', this.peerConnection?.iceGatheringState)
     }
 
     // 监听远程流
     this.peerConnection.ontrack = (event) => {
+      console.log('[WebRTC] 收到远程音频流')
       if (event.streams && event.streams[0]) {
         this.remoteStream = event.streams[0]
         this.callbacks.onRemoteStream?.(event.streams[0])
@@ -262,6 +282,7 @@ export class WebRTCManager {
     // 监听连接状态变化
     this.peerConnection.onconnectionstatechange = () => {
       const state = this.peerConnection?.connectionState
+      console.log('[WebRTC] 连接状态:', state)
       if (state) {
         this.callbacks.onConnectionStateChange?.(state)
 
@@ -274,7 +295,13 @@ export class WebRTCManager {
 
     // ICE 连接状态变化
     this.peerConnection.oniceconnectionstatechange = () => {
-      console.log('ICE 状态:', this.peerConnection?.iceConnectionState)
+      const state = this.peerConnection?.iceConnectionState
+      console.log('[WebRTC] ICE 连接状态:', state)
+      // ICE 连接失败时也触发错误
+      if (state === 'failed') {
+        console.error('[WebRTC] ICE 连接失败，可能需要 TURN 服务器')
+        this.callbacks.onError?.(new Error('ICE 连接失败'))
+      }
     }
 
     // 添加本地音频轨道
