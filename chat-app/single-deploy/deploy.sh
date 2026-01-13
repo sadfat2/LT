@@ -87,6 +87,11 @@ load_env() {
     if [ -f "$env_file" ]; then
         export $(grep -v '^#' "$env_file" | xargs)
         log_info "已加载环境变量"
+
+        # 同步 .env 到 DEPLOY_DIR（Docker Compose 需要）
+        if [ -d "$DEPLOY_DIR" ] && [ "$env_file" != "$DEPLOY_DIR/.env" ]; then
+            cp "$env_file" "$DEPLOY_DIR/.env"
+        fi
     else
         log_error ".env 文件不存在: $env_file"
         log_error "请先复制 .env.example 并配置"
@@ -279,6 +284,12 @@ copy_deploy_files() {
 
     # 复制 nginx.conf
     cp "$SCRIPT_DIR/nginx.conf" "$DEPLOY_DIR/"
+
+    # 复制 .env 文件（Docker Compose 需要在同目录读取）
+    if [ -f "$SCRIPT_DIR/.env" ]; then
+        cp "$SCRIPT_DIR/.env" "$DEPLOY_DIR/.env"
+        log_info ".env 已复制到 $DEPLOY_DIR/"
+    fi
 
     log_info "部署文件复制完成"
 }
@@ -662,6 +673,7 @@ main() {
             ;;
         --restart)
             check_root
+            load_env
             restart_services
             ;;
         --status)
