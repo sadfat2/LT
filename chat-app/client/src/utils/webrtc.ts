@@ -11,22 +11,38 @@ let ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ]
 
-// 动态获取 Cloudflare TURN 凭据
+// 动态获取 TURN 凭据（通过后端代理）
 let turnCredentialsFetched = false
 const fetchTurnCredentials = async (): Promise<void> => {
   if (turnCredentialsFetched) return
 
   try {
-    const response = await fetch('https://speed.cloudflare.com/turn-creds')
+    const token = uni.getStorageSync('token')
+    const baseUrl = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '')
+
+    const response = await fetch(`${baseUrl}/api/webrtc/turn-credentials`, {
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    })
+
     if (response.ok) {
-      const data = await response.json()
-      if (data.iceServers && Array.isArray(data.iceServers)) {
-        ICE_SERVERS = [
-          ...ICE_SERVERS,
-          ...data.iceServers
-        ]
-        turnCredentialsFetched = true
-        console.log('[WebRTC] 已获取 Cloudflare TURN 凭据')
+      const result = await response.json()
+      if (result.code === 200 && result.data) {
+        // Cloudflare 返回格式: { urls: [...], username: '...', credential: '...' }
+        // 这已经是一个有效的 RTCIceServer 对象
+        if (result.data.urls && result.data.username && result.data.credential) {
+          ICE_SERVERS = [
+            ...ICE_SERVERS,
+            {
+              urls: result.data.urls,
+              username: result.data.username,
+              credential: result.data.credential
+            }
+          ]
+          turnCredentialsFetched = true
+          console.log('[WebRTC] 已获取 Cloudflare TURN 凭据，ICE 服务器:', ICE_SERVERS.map(s => s.urls))
+        }
       }
     }
   } catch (error) {

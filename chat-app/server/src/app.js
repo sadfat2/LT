@@ -13,6 +13,7 @@ const friendRoutes = require('./routes/friend');
 const conversationRoutes = require('./routes/conversation');
 const uploadRoutes = require('./routes/upload');
 const groupRoutes = require('./routes/group');
+const webrtcRoutes = require('./routes/webrtc');
 const { errorHandler } = require('./middlewares/errorHandler');
 
 const app = express();
@@ -57,6 +58,7 @@ app.use('/api/friends', friendRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/groups', groupRoutes);
+app.use('/api/webrtc', webrtcRoutes);
 
 // 健康检查
 app.get('/health', (req, res) => {
