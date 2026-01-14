@@ -165,9 +165,9 @@ router.get('/online', async (req, res, next) => {
       });
     }
 
-    // 获取在线用户信息
+    // 获取在线用户信息（使用 query 而非 execute，因为 IN 子句参数数量动态变化）
     const placeholders = onlineUserIds.map(() => '?').join(',');
-    const [users] = await pool.execute(
+    const [users] = await pool.query(
       `SELECT id, account, nickname, avatar, created_at
        FROM users
        WHERE id IN (${placeholders})

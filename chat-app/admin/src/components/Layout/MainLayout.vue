@@ -24,10 +24,6 @@
           <el-icon><Link /></el-icon>
           <span>推荐链接</span>
         </el-menu-item>
-        <el-menu-item index="/statistics">
-          <el-icon><TrendCharts /></el-icon>
-          <span>数据统计</span>
-        </el-menu-item>
         <el-menu-item index="/admins">
           <el-icon><UserFilled /></el-icon>
           <span>管理员管理</span>
@@ -76,7 +72,6 @@ import {
   DataAnalysis,
   User,
   Link,
-  TrendCharts,
   UserFilled,
   ArrowDown
 } from '@element-plus/icons-vue'

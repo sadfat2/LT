@@ -88,7 +88,7 @@ class Conversation {
 
     if (groupIds.length > 0) {
       const placeholders = groupIds.map(() => '?').join(',');
-      const [members] = await pool.execute(
+      const [members] = await pool.query(
         `SELECT gm.group_id, u.id, u.avatar, u.nickname
          FROM group_members gm
          JOIN users u ON gm.user_id = u.id
