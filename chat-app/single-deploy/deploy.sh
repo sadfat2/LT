@@ -47,6 +47,8 @@ show_help() {
     echo "  --rollback          回滚到上一个备份"
     echo "  --frontend-only     仅更新前端"
     echo "  --backend-only      仅更新后端"
+    echo "  --admin-only        仅更新管理后台前端"
+    echo "  --fix-nginx         修复 Nginx 配置"
     echo "  --restart           重启所有服务"
     echo "  --status            查看服务状态"
     echo "  --logs              查看后端日志"
@@ -56,6 +58,7 @@ show_help() {
     echo "  sudo bash deploy.sh --init        # 首次部署"
     echo "  sudo bash deploy.sh --update      # 更新部署"
     echo "  sudo bash deploy.sh --rollback    # 回滚部署"
+    echo "  sudo bash deploy.sh --fix-nginx   # 修复 Nginx 配置"
 }
 
 # 检查是否以 root 运行
@@ -87,6 +90,26 @@ load_env() {
     if [ -f "$env_file" ]; then
         export $(grep -v '^#' "$env_file" | xargs)
         log_info "已加载环境变量"
+
+        # 检查 ADMIN_DOMAIN 是否存在，如果不存在则提示添加
+        if [ -z "$ADMIN_DOMAIN" ]; then
+            log_warn "未配置管理后台域名 (ADMIN_DOMAIN)"
+            read -p "请输入管理后台域名 (如 admin.example.com): " ADMIN_DOMAIN
+            if [ -z "$ADMIN_DOMAIN" ]; then
+                log_error "管理后台域名不能为空"
+                exit 1
+            fi
+            # 追加到 .env 文件
+            echo "" >> "$env_file"
+            echo "# 管理后台域名" >> "$env_file"
+            echo "ADMIN_DOMAIN=$ADMIN_DOMAIN" >> "$env_file"
+            # 更新 ALLOWED_ORIGINS
+            if grep -q "ALLOWED_ORIGINS" "$env_file"; then
+                sed -i "s|ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://$DOMAIN,https://$ADMIN_DOMAIN|" "$env_file"
+            fi
+            log_info "已添加 ADMIN_DOMAIN=$ADMIN_DOMAIN 到 .env"
+            export ADMIN_DOMAIN
+        fi
 
         # 同步 .env 到 DEPLOY_DIR（Docker Compose 需要）
         if [ -d "$DEPLOY_DIR" ] && [ "$env_file" != "$DEPLOY_DIR/.env" ]; then
@@ -488,9 +511,44 @@ configure_nginx() {
     local domain=$DOMAIN
     local admin_domain=$ADMIN_DOMAIN
 
+    # 检查域名变量
+    if [ -z "$domain" ]; then
+        log_error "DOMAIN 未设置"
+        exit 1
+    fi
+    if [ -z "$admin_domain" ]; then
+        log_error "ADMIN_DOMAIN 未设置"
+        exit 1
+    fi
+
+    log_info "主域名: $domain"
+    log_info "管理后台域名: $admin_domain"
+
+    # 检查 SSL 证书是否存在
+    if [ ! -f "/etc/letsencrypt/live/$domain/fullchain.pem" ]; then
+        log_warn "主域名 SSL 证书不存在: /etc/letsencrypt/live/$domain/"
+        log_warn "请先运行 ssl-setup.sh 申请证书"
+    fi
+    if [ ! -f "/etc/letsencrypt/live/$admin_domain/fullchain.pem" ]; then
+        log_warn "管理后台 SSL 证书不存在: /etc/letsencrypt/live/$admin_domain/"
+        log_warn "请先运行 ssl-setup.sh 申请证书"
+    fi
+
+    # 始终从源文件复制 nginx.conf（确保是干净的模板）
+    log_info "复制 nginx.conf 模板..."
+    cp "$SCRIPT_DIR/nginx.conf" "$DEPLOY_DIR/nginx.conf"
+
     # 替换 nginx.conf 中的域名
+    log_info "替换域名配置..."
     sed -i "s/YOUR_DOMAIN/$domain/g" "$DEPLOY_DIR/nginx.conf"
     sed -i "s/ADMIN_DOMAIN/$admin_domain/g" "$DEPLOY_DIR/nginx.conf"
+
+    # 验证替换是否成功
+    if grep -q "YOUR_DOMAIN\|ADMIN_DOMAIN" "$DEPLOY_DIR/nginx.conf"; then
+        log_error "nginx.conf 中仍有未替换的占位符"
+        grep -n "YOUR_DOMAIN\|ADMIN_DOMAIN" "$DEPLOY_DIR/nginx.conf"
+        exit 1
+    fi
 
     # 复制到 Nginx 配置目录
     cp "$DEPLOY_DIR/nginx.conf" "/etc/nginx/sites-available/chat-app"
@@ -502,7 +560,13 @@ configure_nginx() {
     rm -f /etc/nginx/sites-enabled/default
 
     # 测试配置
-    nginx -t
+    log_info "测试 Nginx 配置..."
+    if nginx -t; then
+        log_info "Nginx 配置测试通过"
+    else
+        log_error "Nginx 配置测试失败"
+        exit 1
+    fi
 
     # 重载 Nginx
     systemctl reload nginx
@@ -717,6 +781,39 @@ update_backend_only() {
     log_info "后端更新完成"
 }
 
+# 仅更新管理后台前端
+update_admin_only() {
+    log_step "仅更新管理后台前端..."
+
+    check_root
+    load_env
+
+    pull_code
+    build_admin_frontend
+
+    log_info "管理后台前端更新完成"
+}
+
+# 修复 Nginx 配置
+fix_nginx() {
+    echo "========================================"
+    echo "  修复 Nginx 配置"
+    echo "========================================"
+    echo ""
+
+    check_root
+    load_env
+
+    configure_nginx
+
+    echo ""
+    log_info "Nginx 配置修复完成！"
+    echo ""
+    echo "访问地址:"
+    echo "  聊天应用: https://$DOMAIN"
+    echo "  管理后台: https://$ADMIN_DOMAIN"
+}
+
 # 主函数
 main() {
     case "$1" in
@@ -734,6 +831,12 @@ main() {
             ;;
         --backend-only)
             update_backend_only
+            ;;
+        --admin-only)
+            update_admin_only
+            ;;
+        --fix-nginx)
+            fix_nginx
             ;;
         --restart)
             check_root
