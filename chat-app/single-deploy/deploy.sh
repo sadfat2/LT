@@ -48,6 +48,7 @@ show_help() {
     echo "  --frontend-only     仅更新前端"
     echo "  --backend-only      仅更新后端"
     echo "  --admin-only        仅更新管理后台前端"
+    echo "  --migrate           仅运行数据库迁移"
     echo "  --fix-nginx         修复 Nginx 配置"
     echo "  --restart           重启所有服务"
     echo "  --status            查看服务状态"
@@ -191,6 +192,14 @@ ALLOWED_ORIGINS=https://$DOMAIN,https://$ADMIN_DOMAIN
 
 # Node.js 环境
 NODE_ENV=production
+
+# 功能开关
+FEATURE_REGISTER_ENABLED=false
+FEATURE_VOICE_CALL_ENABLED=false
+
+# IP 注册限制
+IP_LIMIT_ENABLED=true
+IP_LIMIT_MAX_PER_LINK=1
 EOF
 
     log_info "配置已保存到 $SCRIPT_DIR/.env"
@@ -844,6 +853,18 @@ update_admin_only() {
     log_info "管理后台前端更新完成"
 }
 
+# 仅运行数据库迁移
+migrate_only() {
+    log_step "运行数据库迁移..."
+
+    check_root
+    load_env
+
+    run_migrations
+
+    log_info "数据库迁移完成"
+}
+
 # 修复 Nginx 配置
 fix_nginx() {
     echo "========================================"
@@ -884,6 +905,9 @@ main() {
             ;;
         --admin-only)
             update_admin_only
+            ;;
+        --migrate)
+            migrate_only
             ;;
         --fix-nginx)
             fix_nginx

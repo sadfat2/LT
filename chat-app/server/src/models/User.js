@@ -71,6 +71,16 @@ class User {
     return true;
   }
 
+  // 更新密码
+  static async updatePassword(id, newPassword) {
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.execute(
+      'UPDATE users SET password = ? WHERE id = ?',
+      [hashedPassword, id]
+    );
+    return true;
+  }
+
   // 搜索用户
   static async search(keyword, currentUserId) {
     const [rows] = await pool.execute(

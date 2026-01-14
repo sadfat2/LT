@@ -49,6 +49,12 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      # 功能开关
+      FEATURE_REGISTER_ENABLED: "false"
+      FEATURE_VOICE_CALL_ENABLED: "false"
+      # IP注册限制
+      IP_LIMIT_ENABLED: "true"
+      IP_LIMIT_MAX_PER_LINK: "1"
     volumes:
       - ./server:/app
       - /app/node_modules

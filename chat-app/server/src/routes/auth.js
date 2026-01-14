@@ -4,15 +4,38 @@ const User = require('../models/User');
 const { Friend } = require('../models/Friend');
 const ReferralLink = require('../models/ReferralLink');
 const Conversation = require('../models/Conversation');
+const IpRegisterLimit = require('../models/IpRegisterLimit');
 const config = require('../config');
+const pool = require('../config/database');
 const { AppError } = require('../middlewares/errorHandler');
 
 const router = express.Router();
+
+// 获取客户端真实 IP
+function getClientIp(req) {
+  // 优先从 X-Forwarded-For 获取（反向代理场景）
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  // 其次从 X-Real-IP 获取
+  const realIp = req.headers['x-real-ip'];
+  if (realIp) {
+    return realIp;
+  }
+  // 最后使用 req.ip
+  return req.ip || req.connection.remoteAddress;
+}
 
 // 注册
 router.post('/register', async (req, res, next) => {
   try {
     const { account, password, referralCode } = req.body;
+
+    // 检查注册功能是否启用
+    if (!config.features.registerEnabled) {
+      throw new AppError('注册功能暂未开放', 403);
+    }
 
     // 验证账号格式（4-20位字母数字）
     if (!/^[a-zA-Z0-9]{4,20}$/.test(account)) {
@@ -40,8 +63,29 @@ router.post('/register', async (req, res, next) => {
       }
     }
 
+    // IP 限制检查（仅对推荐链接注册生效）
+    const clientIp = getClientIp(req);
+    console.log('[注册] 客户端IP:', clientIp, '推荐码:', referralCode, 'IP限制启用:', config.ipLimit.enabled);
+    if (referralLink && config.ipLimit.enabled) {
+      const canRegister = await IpRegisterLimit.canRegister(
+        clientIp,
+        referralLink.id,
+        config.ipLimit.maxRegistrationsPerLink
+      );
+
+      if (!canRegister) {
+        throw new AppError('该IP已通过此推荐链接注册过，无法再次注册', 403);
+      }
+    }
+
     // 创建用户
     const userId = await User.create(account, password);
+
+    // 记录注册 IP
+    await pool.execute(
+      'UPDATE users SET register_ip = ? WHERE id = ?',
+      [clientIp, userId]
+    );
 
     // 如果有有效的推荐码，处理推荐关系
     if (referralLink) {
@@ -52,6 +96,11 @@ router.post('/register', async (req, res, next) => {
           referralLink.user_id,
           userId
         );
+
+        // 记录 IP 注册（用于限制）
+        if (config.ipLimit.enabled) {
+          await IpRegisterLimit.record(clientIp, referralLink.id, userId);
+        }
 
         // 自动添加推荐人为好友（双向）
         await Friend.addFriend(userId, referralLink.user_id);

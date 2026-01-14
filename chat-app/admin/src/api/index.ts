@@ -32,6 +32,9 @@ export const usersApi = {
   getDetail: (id: number) =>
     get<UserDetail>(`/api/admin/users/${id}`),
 
+  create: (data: { account: string; password: string; nickname?: string }) =>
+    post<User>('/api/admin/users', data),
+
   update: (id: number, data: { nickname?: string; avatar?: string; signature?: string }) =>
     put(`/api/admin/users/${id}`, data),
 

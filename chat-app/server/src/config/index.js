@@ -24,6 +24,22 @@ module.exports = {
     adminExpiresIn: '24h'
   },
 
+  // 功能开关
+  features: {
+    // 是否允许注册（false = 关闭注册入口）
+    registerEnabled: process.env.FEATURE_REGISTER_ENABLED !== 'false',
+    // 是否启用语音通话（false = 关闭语音通话入口）
+    voiceCallEnabled: process.env.FEATURE_VOICE_CALL_ENABLED !== 'false'
+  },
+
+  // IP 注册限制配置（仅对推荐链接注册生效）
+  ipLimit: {
+    // 是否启用 IP 限制
+    enabled: process.env.IP_LIMIT_ENABLED === 'true',
+    // 同一 IP 通过同一推荐链接允许注册的最大次数
+    maxRegistrationsPerLink: parseInt(process.env.IP_LIMIT_MAX_PER_LINK) || 1
+  },
+
   // 上传配置
   upload: {
     maxSize: 10 * 1024 * 1024, // 10MB（图片）

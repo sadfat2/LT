@@ -4,11 +4,61 @@ const adminAuth = require('../../middlewares/adminAuth');
 const { AppError } = require('../../middlewares/errorHandler');
 const { getIO } = require('../../socket');
 const redisClient = require('../../config/redis');
+const User = require('../../models/User');
 
 const router = express.Router();
 
 // 所有路由都需要管理员认证
 router.use(adminAuth);
+
+/**
+ * 创建用户
+ * POST /api/admin/users
+ */
+router.post('/', async (req, res, next) => {
+  try {
+    const { account, password, nickname } = req.body;
+
+    // 验证参数
+    if (!account || !password) {
+      throw new AppError('账号和密码不能为空', 400);
+    }
+
+    // 验证账号格式（4-20位字母数字）
+    if (!/^[a-zA-Z0-9]{4,20}$/.test(account)) {
+      throw new AppError('账号格式错误：需要4-20位字母或数字', 400);
+    }
+
+    // 验证密码格式（6-20位）
+    if (password.length < 6 || password.length > 20) {
+      throw new AppError('密码格式错误：需要6-20位字符', 400);
+    }
+
+    // 检查账号是否已存在
+    const existingUser = await User.findByAccount(account);
+    if (existingUser) {
+      throw new AppError('账号已存在', 400);
+    }
+
+    // 创建用户
+    const userId = await User.create(account, password);
+
+    // 如果提供了昵称，更新昵称
+    if (nickname) {
+      await User.update(userId, { nickname });
+    }
+
+    const user = await User.findById(userId);
+
+    res.status(201).json({
+      code: 200,
+      message: '用户创建成功',
+      data: user
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * 获取用户列表

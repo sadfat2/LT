@@ -82,7 +82,7 @@
         </view>
 
         <!-- 注册链接 -->
-        <view class="register-section" @click="goRegister">
+        <view v-if="configStore.registerEnabled" class="register-section" @click="goRegister">
           <text class="register-text">还没有账号？</text>
           <text class="register-link">立即注册</text>
           <view class="arrow-icon">→</view>
@@ -98,15 +98,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '../../store/user'
+import { useConfigStore } from '../../store/config'
 
 const userStore = useUserStore()
+const configStore = useConfigStore()
 
 const account = ref('')
 const password = ref('')
 const loading = ref(false)
 const showPassword = ref(false)
+
+onMounted(() => {
+  configStore.fetchConfig()
+})
 
 const canSubmit = computed(() => {
   return account.value.length >= 4 && password.value.length >= 6

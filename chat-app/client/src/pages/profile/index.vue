@@ -63,6 +63,13 @@
         <text>设置</text>
       </view>
       <view class="section-card">
+        <view class="section-item" @click="openPasswordModal">
+          <view class="item-content">
+            <text class="item-icon">🔐</text>
+            <text class="item-label">修改密码</text>
+          </view>
+          <text class="item-arrow">›</text>
+        </view>
         <view class="section-item">
           <view class="item-content">
             <text class="item-icon">🔔</text>
@@ -139,6 +146,13 @@
       confirmText="退出"
       @confirm="confirmLogout"
     />
+
+    <!-- 修改密码弹窗 -->
+    <PasswordModal
+      ref="passwordModalRef"
+      v-model:visible="showPasswordModal"
+      @confirm="handlePasswordConfirm"
+    />
   </view>
 </template>
 
@@ -150,6 +164,7 @@ import { userApi } from '../../api'
 import CustomTabBar from '../../components/CustomTabBar.vue'
 import InputModal from '../../components/InputModal.vue'
 import ConfirmModal from '../../components/ConfirmModal.vue'
+import PasswordModal from '../../components/PasswordModal.vue'
 
 const userStore = useUserStore()
 
@@ -158,6 +173,8 @@ const notificationEnabled = ref(true)
 const showNicknameModal = ref(false)
 const showSignatureModal = ref(false)
 const showLogoutModal = ref(false)
+const showPasswordModal = ref(false)
+const passwordModalRef = ref<InstanceType<typeof PasswordModal> | null>(null)
 
 onShow(() => {
   if (userStore.isLoggedIn) {
@@ -225,6 +242,22 @@ const handleLogout = () => {
 
 const confirmLogout = () => {
   userStore.logout()
+}
+
+const openPasswordModal = () => {
+  showPasswordModal.value = true
+}
+
+const handlePasswordConfirm = async (data: { oldPassword: string; newPassword: string }) => {
+  try {
+    await userApi.changePassword(data.oldPassword, data.newPassword)
+    showPasswordModal.value = false
+    uni.showToast({ title: '密码修改成功', icon: 'success' })
+  } catch (error: any) {
+    passwordModalRef.value?.setLoading(false)
+    const message = error?.response?.data?.message || '修改失败，请重试'
+    uni.showToast({ title: message, icon: 'none' })
+  }
 }
 </script>
 

@@ -19,6 +19,10 @@
           <el-option label="封停" value="banned" />
         </el-select>
         <el-button type="primary" style="margin-left: 12px" @click="handleSearch">搜索</el-button>
+        <el-button type="success" style="margin-left: 12px" @click="openCreateDialog">
+          <el-icon style="margin-right: 4px"><Plus /></el-icon>
+          新增用户
+        </el-button>
       </div>
 
       <!-- 用户列表 -->
@@ -114,6 +118,39 @@
         <el-button type="danger" :loading="banLoading" @click="confirmBan">确认封停</el-button>
       </template>
     </el-dialog>
+
+    <!-- 新增用户弹窗 -->
+    <el-dialog v-model="createDialogVisible" title="新增用户" width="450px">
+      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="80px">
+        <el-form-item label="账号" prop="account">
+          <el-input
+            v-model="createForm.account"
+            placeholder="4-20位字母或数字"
+            maxlength="20"
+          />
+        </el-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input
+            v-model="createForm.password"
+            type="password"
+            placeholder="6-20位字符"
+            maxlength="20"
+            show-password
+          />
+        </el-form-item>
+        <el-form-item label="昵称" prop="nickname">
+          <el-input
+            v-model="createForm.nickname"
+            placeholder="可选，不填则使用账号作为昵称"
+            maxlength="20"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="createLoading" @click="confirmCreate">确认创建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -121,7 +158,8 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { Search, Plus } from '@element-plus/icons-vue'
+import type { FormInstance, FormRules } from 'element-plus'
 import { usersApi } from '@/api'
 import type { User } from '@/types'
 import dayjs from 'dayjs'
@@ -140,6 +178,27 @@ const banDialogVisible = ref(false)
 const banReason = ref('')
 const banLoading = ref(false)
 const currentBanUser = ref<User | null>(null)
+
+// 新增用户相关
+const createDialogVisible = ref(false)
+const createLoading = ref(false)
+const createFormRef = ref<FormInstance>()
+const createForm = ref({
+  account: '',
+  password: '',
+  nickname: ''
+})
+const createRules: FormRules = {
+  account: [
+    { required: true, message: '请输入账号', trigger: 'blur' },
+    { min: 4, max: 20, message: '账号长度为4-20位', trigger: 'blur' },
+    { pattern: /^[a-zA-Z0-9]+$/, message: '账号只能包含字母和数字', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, max: 20, message: '密码长度为6-20位', trigger: 'blur' }
+  ]
+}
 
 function formatDate(date: string) {
   return dayjs(date).format('YYYY-MM-DD HH:mm:ss')
@@ -208,6 +267,42 @@ async function handleUnban(user: User) {
     if (error !== 'cancel') {
       console.error('解封失败:', error)
     }
+  }
+}
+
+function openCreateDialog() {
+  createForm.value = {
+    account: '',
+    password: '',
+    nickname: ''
+  }
+  createDialogVisible.value = true
+}
+
+async function confirmCreate() {
+  if (!createFormRef.value) return
+
+  try {
+    await createFormRef.value.validate()
+  } catch {
+    return
+  }
+
+  createLoading.value = true
+  try {
+    await usersApi.create({
+      account: createForm.value.account,
+      password: createForm.value.password,
+      nickname: createForm.value.nickname || undefined
+    })
+    ElMessage.success('用户创建成功')
+    createDialogVisible.value = false
+    loadUsers()
+  } catch (error: any) {
+    const message = error?.response?.data?.message || '创建失败，请重试'
+    ElMessage.error(message)
+  } finally {
+    createLoading.value = false
   }
 }
 

@@ -85,6 +85,12 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-${JWT_SECRET}}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+      # 功能开关
+      FEATURE_REGISTER_ENABLED: ${FEATURE_REGISTER_ENABLED:-true}
+      FEATURE_VOICE_CALL_ENABLED: ${FEATURE_VOICE_CALL_ENABLED:-true}
+      # IP 注册限制
+      IP_LIMIT_ENABLED: ${IP_LIMIT_ENABLED:-false}
+      IP_LIMIT_MAX_PER_LINK: ${IP_LIMIT_MAX_PER_LINK:-1}
     volumes:
       - ./chat-app/server/uploads:/app/uploads
     depends_on:

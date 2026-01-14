@@ -34,11 +34,22 @@ export const userApi = {
   updateProfile: (data: { nickname?: string; signature?: string }) =>
     put<User>('/api/user/profile', data),
 
+  // 修改密码
+  changePassword: (oldPassword: string, newPassword: string) =>
+    put('/api/user/password', { oldPassword, newPassword }),
+
   // 搜索用户
   search: (keyword: string) => get<User[]>('/api/user/search', { keyword }),
 
   // 上传头像
   uploadAvatar: (filePath: string) => uploadFile('/api/upload/avatar', filePath)
+}
+
+// 配置相关
+export const configApi = {
+  // 获取公开配置
+  getPublicConfig: () =>
+    get<{ registerEnabled: boolean; voiceCallEnabled: boolean }>('/api/config/public')
 }
 
 // 好友相关

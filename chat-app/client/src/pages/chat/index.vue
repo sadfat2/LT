@@ -242,8 +242,8 @@
           </view>
           <text class="panel-text">文件</text>
         </view>
-        <!-- 语音通话（仅私聊） -->
-        <view v-if="conversationType === 'private'" class="panel-item" @click="startVoiceCall">
+        <!-- 语音通话（仅私聊且功能启用） -->
+        <view v-if="conversationType === 'private' && configStore.voiceCallEnabled" class="panel-item" @click="startVoiceCall">
           <view class="panel-icon icon-call">
             <text>📞</text>
           </view>
@@ -266,6 +266,7 @@ import { useSocketStore } from '../../store/socket'
 import { useUserStore } from '../../store/user'
 import { useGroupStore } from '../../store/group'
 import { useCallStore } from '../../store/call'
+import { useConfigStore } from '../../store/config'
 import { uploadApi } from '../../api'
 import { uploadBlob } from '../../utils/request'
 import { H5Recorder, getBlobExtension } from '../../utils/h5Recorder'
@@ -276,6 +277,7 @@ const socketStore = useSocketStore()
 const userStore = useUserStore()
 const groupStore = useGroupStore()
 const callStore = useCallStore()
+const configStore = useConfigStore()
 
 const conversationId = ref<number>(0)
 const otherUserId = ref<number>(0)
@@ -341,6 +343,9 @@ onLoad(async (options) => {
 })
 
 onMounted(async () => {
+  // 加载配置（确保获取最新开关状态）
+  await configStore.fetchConfig()
+
   // 加载消息
   await loadMessages()
 

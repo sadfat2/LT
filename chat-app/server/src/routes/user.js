@@ -48,6 +48,44 @@ router.put('/profile', authMiddleware, async (req, res, next) => {
   }
 });
 
+// 修改密码
+router.put('/password', authMiddleware, async (req, res, next) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+
+    // 验证参数
+    if (!oldPassword || !newPassword) {
+      throw new AppError('请输入旧密码和新密码', 400);
+    }
+
+    if (newPassword.length < 6 || newPassword.length > 20) {
+      throw new AppError('新密码长度需要在6-20位之间', 400);
+    }
+
+    // 获取用户当前密码
+    const user = await User.findByAccount(req.user.account);
+    if (!user) {
+      throw new AppError('用户不存在', 404);
+    }
+
+    // 验证旧密码
+    const isValid = await User.verifyPassword(oldPassword, user.password);
+    if (!isValid) {
+      throw new AppError('旧密码错误', 400);
+    }
+
+    // 更新密码
+    await User.updatePassword(req.user.id, newPassword);
+
+    res.json({
+      code: 200,
+      message: '密码修改成功'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // 搜索用户
 router.get('/search', authMiddleware, async (req, res, next) => {
   try {
