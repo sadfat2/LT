@@ -783,6 +783,9 @@ update_deploy() {
     # 拉取代码
     pull_code
 
+    # 复制部署文件（确保 docker-compose.yml 等文件更新）
+    copy_deploy_files
+
     # 检查前端环境配置
     check_frontend_env
 
@@ -834,8 +837,14 @@ update_backend_only() {
 
     pull_code
 
+    # 复制部署文件（确保 docker-compose.yml 等文件更新）
+    copy_deploy_files
+
     cd "$DEPLOY_DIR"
     docker compose up -d --build server
+
+    # 运行数据库迁移
+    run_migrations
 
     log_info "后端更新完成"
 }
