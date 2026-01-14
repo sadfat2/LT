@@ -792,27 +792,51 @@ const sendVoiceMessageH5 = async (blob: Blob, duration: number) => {
 // 从视频提取第一帧作为缩略图 (H5)
 const extractVideoThumbnail = (videoUrl: string): Promise<Blob | null> => {
   return new Promise((resolve) => {
+    // 1秒超时，超时后使用默认缩略图
+    const timeout = setTimeout(() => {
+      // 生成一个默认的灰色缩略图
+      const canvas = document.createElement('canvas')
+      canvas.width = 320
+      canvas.height = 240
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.fillStyle = '#1a1a2e'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.fillStyle = '#a855f7'
+        ctx.beginPath()
+        ctx.moveTo(140, 100)
+        ctx.lineTo(140, 140)
+        ctx.lineTo(180, 120)
+        ctx.closePath()
+        ctx.fill()
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.7)
+      } else {
+        resolve(null)
+      }
+    }, 1000)
+
     const video = document.createElement('video')
     video.crossOrigin = 'anonymous'
     video.muted = true
+    video.playsInline = true
     video.preload = 'metadata'
+    // @ts-ignore
+    video.setAttribute('webkit-playsinline', 'true')
 
     video.onloadeddata = () => {
-      // 跳转到第一帧
       video.currentTime = 0.1
     }
 
     video.onseeked = () => {
+      clearTimeout(timeout)
       try {
         const canvas = document.createElement('canvas')
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
+        canvas.width = video.videoWidth || 320
+        canvas.height = video.videoHeight || 240
         const ctx = canvas.getContext('2d')
-        if (ctx) {
+        if (ctx && video.videoWidth > 0) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-          canvas.toBlob((blob) => {
-            resolve(blob)
-          }, 'image/jpeg', 0.7)
+          canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.7)
         } else {
           resolve(null)
         }
@@ -821,7 +845,11 @@ const extractVideoThumbnail = (videoUrl: string): Promise<Blob | null> => {
       }
     }
 
-    video.onerror = () => resolve(null)
+    video.onerror = () => {
+      clearTimeout(timeout)
+      resolve(null)
+    }
+
     video.src = videoUrl
   })
 }
@@ -833,7 +861,7 @@ const chooseVideo = () => {
   // #ifdef H5
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = 'video/mp4,video/quicktime,video/webm,video/3gpp,video/x-m4v,video/*'
+  input.accept = 'video/mp4,video/quicktime,video/webm,video/3gpp,video/x-m4v,video/mov,.mp4,.mov,.m4v,.webm,.3gp,video/*'
   input.onchange = async (e: any) => {
     const file = e.target.files[0]
     if (!file) return
@@ -841,6 +869,24 @@ const chooseVideo = () => {
     if (file.size > 50 * 1024 * 1024) {
       uni.showToast({ title: '视频不能超过50MB', icon: 'none' })
       return
+    }
+
+    // 检查 MIME 类型是否有效，如果没有则根据扩展名推断
+    let uploadFile = file
+    if (!file.type || file.type === '' || file.type === 'application/octet-stream') {
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      const mimeMap: Record<string, string> = {
+        'mp4': 'video/mp4',
+        'mov': 'video/quicktime',
+        'webm': 'video/webm',
+        'm4v': 'video/x-m4v',
+        '3gp': 'video/3gpp',
+        '3gpp': 'video/3gpp',
+        'avi': 'video/x-msvideo',
+        'mkv': 'video/x-matroska'
+      }
+      const inferredType = ext ? mimeMap[ext] : 'video/mp4'
+      uploadFile = new File([file], file.name, { type: inferredType || 'video/mp4' })
     }
 
     // 创建临时 URL 用于提取缩略图
@@ -875,7 +921,7 @@ const chooseVideo = () => {
       }
 
       // 上传视频
-      const videoRes = await uploadBlob('/api/upload/video', file, file.name)
+      const videoRes = await uploadBlob('/api/upload/video', uploadFile, uploadFile.name)
       uni.hideLoading()
 
       // 释放临时 URL
@@ -907,14 +953,14 @@ const chooseVideo = () => {
           }
         }
       )
-    } catch (error) {
+    } catch (error: any) {
       uni.hideLoading()
       URL.revokeObjectURL(videoUrl)
       const index = messages.value.findIndex(m => m.id === tempMessage.id)
       if (index !== -1) {
         messages.value.splice(index, 1)
       }
-      uni.showToast({ title: '发送视频失败', icon: 'none' })
+      uni.showToast({ title: error?.message || '发送视频失败', icon: 'none' })
     }
   }
   input.click()

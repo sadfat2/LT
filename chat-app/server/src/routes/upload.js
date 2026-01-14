@@ -74,7 +74,14 @@ const videoFilter = (req, file, cb) => {
   if (config.upload.allowedVideoTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new AppError('只允许上传视频文件', 400), false);
+    // 如果 MIME 类型未知，检查文件扩展名
+    const ext = file.originalname.split('.').pop()?.toLowerCase();
+    const videoExtensions = ['mp4', 'mov', 'webm', 'm4v', '3gp', '3gpp', 'avi', 'mkv', 'mpeg', 'mpg', 'ogg'];
+    if (videoExtensions.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new AppError('只允许上传视频文件', 400), false);
+    }
   }
 };
 

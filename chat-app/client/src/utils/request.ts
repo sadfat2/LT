@@ -200,6 +200,8 @@ export const uploadBlob = async (
       uni.showToast({ title: data.message || '上传失败', icon: 'none' })
       throw new Error(data.message || '上传失败')
     }
+  } catch (error: any) {
+    throw error
   } finally {
     uni.hideLoading()
   }

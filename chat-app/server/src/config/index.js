@@ -51,6 +51,10 @@ module.exports = {
       'video/x-m4v',      // M4V (iOS 常用)
       'video/x-msvideo',  // AVI
       'video/x-matroska', // MKV
+      'video/mov',        // 某些浏览器使用这个
+      'video/mpeg',       // MPEG
+      'video/ogg',        // OGG
+      'application/octet-stream', // 某些移动端浏览器可能发送这个
     ]
   }
 };
