@@ -406,11 +406,14 @@ run_migrations() {
 
     cd "$DEPLOY_DIR"
 
+    # 使用环境变量传递密码，避免命令行警告
+    local MYSQL_CMD="docker exec -e MYSQL_PWD=$DB_ROOT_PASSWORD -i chat-mysql mysql -uroot $DB_NAME"
+
     # 等待 MySQL 完全启动
     local max_retries=30
     local retry=0
     while [ $retry -lt $max_retries ]; do
-        if docker exec chat-mysql mysqladmin ping -h localhost -u root -p"$DB_ROOT_PASSWORD" --silent 2>/dev/null; then
+        if docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" chat-mysql mysqladmin ping -h localhost -u root --silent 2>/dev/null; then
             break
         fi
         retry=$((retry + 1))
@@ -433,7 +436,7 @@ run_migrations() {
 
     # 确保版本表存在
     log_info "确保迁移版本表存在..."
-    docker exec -i chat-mysql mysql -uroot -p"$DB_ROOT_PASSWORD" "$DB_NAME" -e "
+    $MYSQL_CMD -e "
         CREATE TABLE IF NOT EXISTS schema_migrations (
             version INT PRIMARY KEY,
             name VARCHAR(100) NOT NULL,
@@ -459,7 +462,7 @@ run_migrations() {
         fi
 
         # 检查是否已应用
-        local applied=$(docker exec -i chat-mysql mysql -uroot -p"$DB_ROOT_PASSWORD" "$DB_NAME" -N -e "SELECT 1 FROM schema_migrations WHERE version=$version" 2>/dev/null)
+        local applied=$($MYSQL_CMD -N -e "SELECT 1 FROM schema_migrations WHERE version=$version" 2>/dev/null)
 
         if [ -n "$applied" ]; then
             log_info "跳过已应用的迁移: $filename"
@@ -468,9 +471,9 @@ run_migrations() {
 
         # 应用迁移
         log_info "应用迁移: $filename"
-        if docker exec -i chat-mysql mysql -uroot -p"$DB_ROOT_PASSWORD" "$DB_NAME" < "$migration_file" 2>&1; then
+        if $MYSQL_CMD < "$migration_file" 2>&1; then
             # 记录迁移版本
-            docker exec -i chat-mysql mysql -uroot -p"$DB_ROOT_PASSWORD" "$DB_NAME" -e "INSERT INTO schema_migrations (version, name) VALUES ($version, '$filename')" 2>/dev/null
+            $MYSQL_CMD -e "INSERT INTO schema_migrations (version, name) VALUES ($version, '$filename')" 2>/dev/null
             log_info "迁移成功: $filename"
         else
             log_error "迁移失败: $filename"
