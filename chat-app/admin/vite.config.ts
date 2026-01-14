@@ -29,6 +29,13 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets'
   },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: 'modern'
+      }
+    }
+  },
   server: {
     port: 8081,
     proxy: {
