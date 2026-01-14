@@ -6,8 +6,8 @@ import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
 export default defineConfig({
-  // 生产环境部署在 /admin/ 路径下
-  base: process.env.NODE_ENV === 'production' ? '/admin/' : '/',
+  // 独立子域名部署，使用根路径
+  base: '/',
   plugins: [
     vue(),
     AutoImport({

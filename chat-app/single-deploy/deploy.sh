@@ -103,10 +103,17 @@ load_env() {
 interactive_config() {
     log_step "配置部署参数..."
 
-    # 域名
-    read -p "请输入域名 (如 chat.example.com): " DOMAIN
+    # 主域名
+    read -p "请输入主域名 (如 chat.example.com): " DOMAIN
     if [ -z "$DOMAIN" ]; then
         log_error "域名不能为空"
+        exit 1
+    fi
+
+    # 管理后台域名
+    read -p "请输入管理后台域名 (如 admin.example.com): " ADMIN_DOMAIN
+    if [ -z "$ADMIN_DOMAIN" ]; then
+        log_error "管理后台域名不能为空"
         exit 1
     fi
 
@@ -142,6 +149,7 @@ interactive_config() {
     cat > "$SCRIPT_DIR/.env" << EOF
 # 域名配置
 DOMAIN=$DOMAIN
+ADMIN_DOMAIN=$ADMIN_DOMAIN
 
 # 数据库配置
 DB_ROOT_PASSWORD=$DB_ROOT_PASSWORD
@@ -156,7 +164,7 @@ JWT_SECRET=$JWT_SECRET
 ADMIN_JWT_SECRET=$ADMIN_JWT_SECRET
 
 # CORS 允许的源
-ALLOWED_ORIGINS=https://$DOMAIN
+ALLOWED_ORIGINS=https://$DOMAIN,https://$ADMIN_DOMAIN
 
 # Node.js 环境
 NODE_ENV=production
@@ -295,7 +303,7 @@ build_admin_frontend() {
     local admin_env="$CHAT_APP_DIR/admin/.env"
     cat > "$admin_env" << EOF
 # 管理后台环境配置（由 deploy.sh 自动生成）
-VITE_API_BASE_URL=https://$DOMAIN
+VITE_API_BASE_URL=https://$ADMIN_DOMAIN
 VITE_CLIENT_URL=https://$DOMAIN
 EOF
     log_info "管理后台环境配置已生成: $admin_env"
@@ -478,9 +486,11 @@ configure_nginx() {
     log_step "配置 Nginx..."
 
     local domain=$DOMAIN
+    local admin_domain=$ADMIN_DOMAIN
 
     # 替换 nginx.conf 中的域名
     sed -i "s/YOUR_DOMAIN/$domain/g" "$DEPLOY_DIR/nginx.conf"
+    sed -i "s/ADMIN_DOMAIN/$admin_domain/g" "$DEPLOY_DIR/nginx.conf"
 
     # 复制到 Nginx 配置目录
     cp "$DEPLOY_DIR/nginx.conf" "/etc/nginx/sites-available/chat-app"
@@ -621,7 +631,10 @@ init_deploy() {
     log_info "部署完成！"
     echo "========================================"
     echo ""
-    echo "访问地址: https://$DOMAIN"
+    echo "访问地址:"
+    echo "  聊天应用: https://$DOMAIN"
+    echo "  管理后台: https://$ADMIN_DOMAIN"
+    echo "  管理员账号: admin / admin123"
     echo ""
     echo "常用命令:"
     echo "  查看状态: bash deploy.sh --status"
