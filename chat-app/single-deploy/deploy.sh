@@ -331,13 +331,12 @@ VITE_CLIENT_URL=https://$DOMAIN
 EOF
     log_info "管理后台环境配置已生成: $admin_env"
 
-    # 使用 Docker 构建
+    # 使用 Docker 构建（先安装依赖，再以生产模式构建）
     docker run --rm \
         -v "$CHAT_APP_DIR/admin:/app" \
         -w /app \
-        -e NODE_ENV=production \
         node:18-alpine \
-        sh -c "npm config set registry https://registry.npmmirror.com && npm install && npm run build"
+        sh -c "npm config set registry https://registry.npmmirror.com && npm install && NODE_ENV=production npm run build"
 
     if [ $? -eq 0 ]; then
         log_info "管理后台前端构建完成"
