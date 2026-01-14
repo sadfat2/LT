@@ -423,12 +423,60 @@ run_migrations() {
         return 1
     fi
 
-    # 执行迁移脚本（如果存在）
-    local migrate_script="$CHAT_APP_DIR/server/sql/migrate.sh"
-    if [ -f "$migrate_script" ]; then
-        log_info "执行迁移脚本..."
-        docker exec chat-server sh /app/sql/migrate.sh 2>/dev/null || true
+    # 获取迁移目录
+    local migrations_dir="$CHAT_APP_DIR/server/sql/migrations"
+
+    if [ ! -d "$migrations_dir" ]; then
+        log_warn "迁移目录不存在: $migrations_dir"
+        return 0
     fi
+
+    # 确保版本表存在
+    log_info "确保迁移版本表存在..."
+    docker exec -i chat-mysql mysql -uroot -p"$DB_ROOT_PASSWORD" "$DB_NAME" -e "
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    " 2>/dev/null
+
+    # 遍历迁移文件
+    local migration_files=$(ls "$migrations_dir"/*.sql 2>/dev/null | sort)
+
+    if [ -z "$migration_files" ]; then
+        log_info "没有找到迁移文件"
+        return 0
+    fi
+
+    for migration_file in $migration_files; do
+        local filename=$(basename "$migration_file")
+        local version=$(echo "$filename" | cut -d'_' -f1)
+
+        # 跳过版本表创建脚本
+        if [ "$version" = "000" ]; then
+            continue
+        fi
+
+        # 检查是否已应用
+        local applied=$(docker exec -i chat-mysql mysql -uroot -p"$DB_ROOT_PASSWORD" "$DB_NAME" -N -e "SELECT 1 FROM schema_migrations WHERE version=$version" 2>/dev/null)
+
+        if [ -n "$applied" ]; then
+            log_info "跳过已应用的迁移: $filename"
+            continue
+        fi
+
+        # 应用迁移
+        log_info "应用迁移: $filename"
+        if docker exec -i chat-mysql mysql -uroot -p"$DB_ROOT_PASSWORD" "$DB_NAME" < "$migration_file" 2>&1; then
+            # 记录迁移版本
+            docker exec -i chat-mysql mysql -uroot -p"$DB_ROOT_PASSWORD" "$DB_NAME" -e "INSERT INTO schema_migrations (version, name) VALUES ($version, '$filename')" 2>/dev/null
+            log_info "迁移成功: $filename"
+        else
+            log_error "迁移失败: $filename"
+            return 1
+        fi
+    done
 
     log_info "数据库迁移完成"
 }
