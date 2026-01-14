@@ -15,7 +15,7 @@ class User {
   // 通过ID查找用户
   static async findById(id) {
     const [rows] = await pool.execute(
-      'SELECT id, account, nickname, avatar, signature, pinyin, created_at FROM users WHERE id = ?',
+      'SELECT id, account, nickname, avatar, signature, pinyin, status, created_at FROM users WHERE id = ?',
       [id]
     );
     return rows[0];

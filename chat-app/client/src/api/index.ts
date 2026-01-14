@@ -17,8 +17,12 @@ export const authApi = {
     post<LoginResponse>('/api/auth/login', { account, password }),
 
   // 注册
-  register: (account: string, password: string) =>
-    post<LoginResponse>('/api/auth/register', { account, password })
+  register: (account: string, password: string, referralCode?: string) =>
+    post<LoginResponse>('/api/auth/register', { account, password, referralCode }),
+
+  // 验证推荐码
+  verifyReferral: (code: string) =>
+    get<{ valid: boolean; referrer: { id: number; nickname: string; avatar: string | null } }>(`/api/referral/verify/${code}`)
 }
 
 // 用户相关

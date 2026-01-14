@@ -91,6 +91,13 @@
         "navigationStyle": "custom",
         "navigationBarTitleText": "邀请成员"
       }
+    },
+    {
+      "path": "pages/referral/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "邀请注册"
+      }
     }
   ],
   "globalStyle": {

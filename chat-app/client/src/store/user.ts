@@ -41,8 +41,8 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // 注册
-  const register = async (account: string, password: string) => {
-    const res = await authApi.register(account, password)
+  const register = async (account: string, password: string, referralCode?: string) => {
+    const res = await authApi.register(account, password, referralCode)
     token.value = res.data.token
     user.value = res.data.user
 

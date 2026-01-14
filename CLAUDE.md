@@ -40,11 +40,21 @@ npm run dev:mp-weixin   # 微信小程序开发
 npm run build:h5        # 构建 H5
 ```
 
+### 后台管理系统
+
+```bash
+cd chat-app/admin
+
+npm install
+npm run dev             # 开发模式 (端口 8081)
+npm run build           # 构建生产版本
+```
+
 ## 架构设计
 
 ```
-客户端 (UniApp)
-    ├── HTTP --> REST API (Express :3000)
+客户端 (UniApp)                      后台管理 (Vue3 + Element Plus)
+    ├── HTTP --> REST API (Express :3000) <── HTTP
     └── WebSocket --> Socket.io Server
                           ├── MySQL (持久化)
                           └── Redis (在线状态)
@@ -71,6 +81,11 @@ npm run build:h5        # 构建 H5
 | 上传配置 | `chat-app/server/src/config/index.js` |
 | 数据库初始化 | `chat-app/server/sql/init.sql` |
 | 数据库迁移 | `chat-app/server/sql/migrate_v2.sql` |
+| 后台管理迁移 | `chat-app/server/sql/migrate_admin.sql` |
+| 后台管理前端 | `chat-app/admin/` |
+| 后台管理 API | `chat-app/server/src/routes/admin/` |
+| 管理员模型 | `chat-app/server/src/models/Admin.js` |
+| 推荐链接模型 | `chat-app/server/src/models/ReferralLink.js` |
 
 ### Pinia Stores 职责
 
@@ -179,11 +194,44 @@ npm run build:h5        # 构建 H5
 ### WebRTC
 - `GET /api/webrtc/turn-credentials` - 获取 TURN 服务器凭据（通过 Cloudflare 代理）
 
+### 推荐链接（公开）
+- `GET /api/referral/verify/:code` - 验证推荐码
+
+### 后台管理 API
+
+**认证**
+- `POST /api/admin/auth/login` - 管理员登录
+- `GET /api/admin/auth/profile` - 获取当前管理员信息
+
+**用户管理**
+- `GET /api/admin/users` - 用户列表 `(?page, limit, keyword, status)`
+- `GET /api/admin/users/:id` - 用户详情
+- `PUT /api/admin/users/:id` - 更新用户信息
+- `POST /api/admin/users/:id/ban` - 封停用户（触发 Socket 强制下线）
+- `POST /api/admin/users/:id/unban` - 解封用户
+- `GET /api/admin/users/:id/messages` - 用户聊天记录 `(?page, limit)`
+
+**推荐链接管理**
+- `GET /api/admin/referrals` - 推荐链接列表 `(?page, limit, keyword)`
+- `POST /api/admin/referrals` - 创建推荐链接 `{ userId }`
+- `PUT /api/admin/referrals/:id/toggle` - 切换激活状态
+- `DELETE /api/admin/referrals/:id` - 删除推荐链接
+
+**数据统计**
+- `GET /api/admin/statistics/overview` - 概览统计（总用户/今日新增/活跃/在线）
+- `GET /api/admin/statistics/trends` - 趋势数据 `(?days=30)`
+
+**管理员管理**
+- `GET /api/admin/admins` - 管理员列表
+- `POST /api/admin/admins` - 创建管理员 `{ username, password, nickname }`
+- `PUT /api/admin/admins/:id` - 更新管理员
+- `DELETE /api/admin/admins/:id` - 删除管理员
+
 ## 数据库表结构
 
 | 表名 | 说明 | 关键字段 |
 |------|------|----------|
-| `users` | 用户信息 | account, nickname, avatar, signature, pinyin |
+| `users` | 用户信息 | account, nickname, avatar, signature, pinyin, status(active/banned) |
 | `friendships` | 好友关系（双向存储） | user_id, friend_id, remark |
 | `friend_requests` | 好友申请 | from_user_id, to_user_id, status(0待处理/1同意/2拒绝), message |
 | `conversations` | 会话记录 | type(private/group), group_id, last_message_id |
@@ -191,6 +239,9 @@ npm run build:h5        # 构建 H5
 | `messages` | 消息记录 | type(text/image/voice/file/video/system), content, status, duration, file_name, file_size, thumbnail_url |
 | `groups` | 群组信息 | name, avatar, owner_id |
 | `group_members` | 群成员 | group_id, user_id, role(owner/member) |
+| `admins` | 管理员 | username, password, nickname, last_login_at |
+| `referral_links` | 推荐链接 | user_id, code, is_active, click_count, register_count |
+| `referral_registrations` | 推荐注册记录 | referral_link_id, referrer_id, referee_id |
 
 ## 服务端口
 
@@ -198,16 +249,25 @@ npm run build:h5        # 构建 H5
 |------|------|
 | Node.js 后端 | 3000 |
 | 前端 H5 开发 | 8080 |
+| 后台管理前端 | 8081 |
 | MySQL | 3306 |
 | Redis | 6379 |
 
 ## 测试账号
+
+### 聊天应用用户
 
 | 账号 | 密码 |
 |------|------|
 | testuser1 | password123 |
 | testuser2 | password123 |
 | testuser3 | password123 |
+
+### 后台管理员
+
+| 账号 | 密码 |
+|------|------|
+| admin | admin123 |
 
 ## 平台差异
 
@@ -448,6 +508,9 @@ const ICE_SERVERS: RTCIceServer[] = [
 # 方式一：执行迁移脚本（保留数据）
 docker exec -i chat-mysql mysql -uroot -proot123456 chat_app < chat-app/server/sql/migrate_v2.sql
 
+# 后台管理系统迁移（创建管理员表、推荐链接表等）
+docker exec -i chat-mysql mysql -uroot -proot123456 chat_app < chat-app/server/sql/migrate_admin.sql
+
 # 方式二：重建数据库（清除所有数据）
 cd chat-app
 docker-compose down -v
@@ -484,6 +547,61 @@ curl -s http://localhost:3000/api/webrtc/turn-credentials -H "Authorization: Bea
 4. 用户A 点击 **+** → **语音通话**
 5. 用户B 会收到来电弹窗
 6. 用户B 点击接听，验证语音通话功能
+
+## 后台管理系统
+
+### 功能模块
+
+| 模块 | 功能 |
+|------|------|
+| 仪表盘 | 用户统计概览、趋势图表 |
+| 用户管理 | 用户列表、搜索、封停/解封、查看聊天记录 |
+| 推荐链接 | 创建/删除链接、激活/禁用、统计数据 |
+| 数据统计 | 用户趋势、活跃度分析 |
+| 管理员管理 | 管理员账号增删改查 |
+
+### 用户封停流程
+
+1. 管理员在后台封停用户
+2. 后端通过 Socket.io 发送 `force_logout` 事件
+3. 前端收到事件后强制退出登录
+4. 被封停用户无法再次登录
+
+### 推荐链接流程
+
+1. 管理员为用户创建推荐链接，生成唯一 code
+2. 链接格式：`https://domain.com/register?ref={code}`
+3. 新用户通过链接注册时带上 `referralCode` 参数
+4. 注册成功后：
+   - 记录推荐关系到 `referral_registrations` 表
+   - 自动添加推荐人为好友
+   - 自动创建私聊会话
+   - 更新推荐链接的注册计数
+
+### Socket 事件
+
+| 事件 | 方向 | 说明 |
+|------|------|------|
+| `force_logout` | S→C | 强制下线（封停用户时触发） |
+
+```javascript
+// 前端监听示例
+socket.on('force_logout', ({ reason, message }) => {
+  // reason: 'banned'
+  // message: '您的账号已被封停：xxx'
+  userStore.logout()
+  router.push('/login')
+})
+```
+
+### 前端技术栈
+
+- Vue 3 + TypeScript
+- Element Plus UI 组件库
+- Pinia 状态管理
+- Vue Router 路由
+- ECharts 图表
+- Axios HTTP 客户端
 
 ## 生产部署
 

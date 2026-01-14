@@ -19,7 +19,9 @@ module.exports = {
   // JWT 配置
   jwt: {
     secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
-    expiresIn: '7d'
+    adminSecret: process.env.JWT_ADMIN_SECRET || 'your-admin-secret-jwt-key',
+    expiresIn: '7d',
+    adminExpiresIn: '24h'
   },
 
   // 上传配置

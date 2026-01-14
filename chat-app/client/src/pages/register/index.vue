@@ -24,6 +24,20 @@
         <text class="subtitle">开启全新的聊天体验</text>
       </view>
 
+      <!-- 推荐人信息 -->
+      <view v-if="referrer" class="referrer-card">
+        <view class="referrer-label">受邀加入</view>
+        <view class="referrer-info">
+          <image
+            class="referrer-avatar"
+            :src="referrer.avatar || '/static/default-avatar.png'"
+            mode="aspectFill"
+          />
+          <text class="referrer-name">{{ referrer.nickname }}</text>
+          <text class="referrer-desc">邀请你加入</text>
+        </view>
+      </view>
+
       <!-- 表单区域 -->
       <view class="form-card">
         <!-- 账号 -->
@@ -127,8 +141,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '../../store/user'
+import { authApi } from '../../api'
 
 const userStore = useUserStore()
 
@@ -141,6 +156,40 @@ const showPassword = ref(false)
 const accountFocus = ref(false)
 const passwordFocus = ref(false)
 const confirmFocus = ref(false)
+
+// 推荐码相关
+const referralCode = ref('')
+const referrer = ref<{ id: number; nickname: string; avatar: string | null } | null>(null)
+const referralLoading = ref(false)
+
+// 获取 URL 参数中的推荐码
+onMounted(async () => {
+  // #ifdef H5
+  const urlParams = new URLSearchParams(window.location.search)
+  const code = urlParams.get('ref')
+  // #endif
+  // #ifndef H5
+  const pages = getCurrentPages()
+  const currentPage = pages[pages.length - 1] as any
+  const code = currentPage?.$page?.options?.ref || currentPage?.options?.ref
+  // #endif
+
+  if (code) {
+    referralCode.value = code
+    referralLoading.value = true
+    try {
+      const res = await authApi.verifyReferral(code)
+      if (res.data.valid) {
+        referrer.value = res.data.referrer
+      }
+    } catch (error) {
+      console.error('推荐码验证失败:', error)
+      referralCode.value = ''
+    } finally {
+      referralLoading.value = false
+    }
+  }
+})
 
 const accountError = computed(() => {
   if (!account.value) return ''
@@ -188,7 +237,7 @@ const handleRegister = async () => {
 
   loading.value = true
   try {
-    await userStore.register(account.value, password.value)
+    await userStore.register(account.value, password.value, referralCode.value || undefined)
     uni.showToast({ title: '注册成功', icon: 'success' })
     setTimeout(() => {
       uni.switchTab({ url: '/pages/index/index' })
@@ -560,5 +609,47 @@ const goLogin = () => {
 .terms-link {
   font-size: var(--text-xs);
   color: var(--accent-tertiary);
+}
+
+/* 推荐人卡片 */
+.referrer-card {
+  background: var(--gradient-card);
+  backdrop-filter: var(--blur-lg);
+  -webkit-backdrop-filter: var(--blur-lg);
+  border: 1rpx solid var(--accent-primary);
+  border-radius: var(--radius-xl);
+  padding: 24rpx 32rpx;
+  margin-bottom: 32rpx;
+}
+
+.referrer-label {
+  font-size: var(--text-xs);
+  color: var(--accent-primary);
+  font-weight: var(--font-medium);
+  margin-bottom: 16rpx;
+}
+
+.referrer-info {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.referrer-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: var(--radius-full);
+  border: 2rpx solid var(--accent-primary);
+}
+
+.referrer-name {
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.referrer-desc {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
 }
 </style>

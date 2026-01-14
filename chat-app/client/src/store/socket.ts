@@ -70,6 +70,26 @@ export const useSocketStore = defineStore('socket', () => {
     socket.value.on('user_offline', ({ userId }) => {
       onlineUsers.value.delete(userId)
     })
+
+    // 强制下线（被封停时触发）
+    socket.value.on('force_logout', ({ reason, message }) => {
+      console.log('[Socket] 强制下线:', reason, message)
+      // 断开连接
+      disconnect()
+      // 清除本地存储
+      uni.removeStorageSync('token')
+      uni.removeStorageSync('user')
+      // 显示提示
+      uni.showModal({
+        title: '账号已被封停',
+        content: message || '您的账号已被管理员封停，如有疑问请联系客服',
+        showCancel: false,
+        success: () => {
+          // 跳转到登录页
+          uni.reLaunch({ url: '/pages/login/index' })
+        }
+      })
+    })
   }
 
   // 断开连接

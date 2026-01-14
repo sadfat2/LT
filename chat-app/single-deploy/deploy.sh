@@ -134,6 +134,10 @@ interactive_config() {
     JWT_SECRET=$(openssl rand -base64 32)
     log_info "已自动生成 JWT 密钥"
 
+    # 管理员 JWT 密钥
+    ADMIN_JWT_SECRET=$(openssl rand -base64 32)
+    log_info "已自动生成管理员 JWT 密钥"
+
     # 保存配置到 single-deploy 目录
     cat > "$SCRIPT_DIR/.env" << EOF
 # 域名配置
@@ -147,6 +151,9 @@ DB_NAME=chat_app
 
 # JWT 密钥
 JWT_SECRET=$JWT_SECRET
+
+# 管理员 JWT 密钥
+ADMIN_JWT_SECRET=$ADMIN_JWT_SECRET
 
 # CORS 允许的源
 ALLOWED_ORIGINS=https://$DOMAIN
@@ -268,6 +275,44 @@ build_frontend() {
         log_info "输出目录: $CHAT_APP_DIR/client/dist/build/h5"
     else
         log_error "前端构建失败"
+        exit 1
+    fi
+}
+
+# 构建管理后台前端
+build_admin_frontend() {
+    log_step "构建管理后台前端..."
+
+    # 检查 admin 目录是否存在
+    if [ ! -d "$CHAT_APP_DIR/admin" ]; then
+        log_warn "管理后台目录不存在，跳过构建"
+        return
+    fi
+
+    cd "$CHAT_APP_DIR/admin"
+
+    # 生成管理后台环境配置
+    local admin_env="$CHAT_APP_DIR/admin/.env"
+    cat > "$admin_env" << EOF
+# 管理后台环境配置（由 deploy.sh 自动生成）
+VITE_API_BASE_URL=https://$DOMAIN
+VITE_CLIENT_URL=https://$DOMAIN
+EOF
+    log_info "管理后台环境配置已生成: $admin_env"
+
+    # 使用 Docker 构建
+    docker run --rm \
+        -v "$CHAT_APP_DIR/admin:/app" \
+        -w /app \
+        -e NODE_ENV=production \
+        node:18-alpine \
+        sh -c "npm config set registry https://registry.npmmirror.com && npm install && npm run build"
+
+    if [ $? -eq 0 ]; then
+        log_info "管理后台前端构建完成"
+        log_info "输出目录: $CHAT_APP_DIR/admin/dist"
+    else
+        log_error "管理后台前端构建失败"
         exit 1
     fi
 }
@@ -559,6 +604,9 @@ init_deploy() {
     # 构建前端
     build_frontend
 
+    # 构建管理后台前端
+    build_admin_frontend
+
     # 启动 Docker 服务
     start_docker_services
 
@@ -604,6 +652,9 @@ update_deploy() {
 
     # 构建前端
     build_frontend
+
+    # 构建管理后台前端
+    build_admin_frontend
 
     # 更新 Docker 服务
     update_docker_services

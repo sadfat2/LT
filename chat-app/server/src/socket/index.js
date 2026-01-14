@@ -49,6 +49,16 @@ const initSocket = (server) => {
       }
 
       const decoded = jwt.verify(token, config.jwt.secret);
+
+      // 检查用户是否被封停
+      const user = await User.findById(decoded.id);
+      if (!user) {
+        return next(new Error('用户不存在'));
+      }
+      if (user.status === 'banned') {
+        return next(new Error('账号已被封停'));
+      }
+
       socket.userId = decoded.id;
       socket.userAccount = decoded.account;
       next();
