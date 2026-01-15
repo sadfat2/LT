@@ -781,11 +781,11 @@ init_deploy() {
     # 构建管理后台前端
     build_admin_frontend
 
+    # 应用性能优化（在启动服务前）
+    apply_optimizations
+
     # 启动 Docker 服务
     start_docker_services
-
-    # 应用性能优化
-    apply_optimizations
 
     # 配置 Nginx
     configure_nginx
@@ -839,11 +839,11 @@ update_deploy() {
     # 构建管理后台前端
     build_admin_frontend
 
-    # 更新 Docker 服务
-    update_docker_services
-
-    # 应用性能优化
+    # 应用性能优化（在更新服务前）
     apply_optimizations
+
+    # 更新 Docker 服务（会重建容器）
+    update_docker_services
 
     # 运行数据库迁移
     run_migrations
