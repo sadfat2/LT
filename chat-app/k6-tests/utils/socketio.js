@@ -453,15 +453,18 @@ export function getFriends(baseUrl, token) {
   if (response.status === 200) {
     const data = JSON.parse(response.body)
     if (data.code === 200) {
+      // API 返回格式: { data: { list: [...], grouped: {...} } }
+      const friends = data.data.list || data.data || []
       return {
         success: true,
-        friends: data.data
+        friends: friends
       }
     }
   }
 
   return {
     success: false,
+    friends: [],
     error: response.body
   }
 }

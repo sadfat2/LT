@@ -24,6 +24,9 @@ const handshakeDuration = new Trend('handshake_duration', true)
 const activeConnections = new Counter('active_connections')
 const connectionErrors = new Counter('connection_errors')
 
+// 获取实际 VU 数量（环境变量优先）
+const ACTUAL_VUS = parseInt(__ENV.VUS) || TEST_CONFIG.connection.vus
+
 // 测试配置
 export const options = {
   scenarios: {
@@ -37,7 +40,8 @@ export const options = {
     connection_success: ['rate>0.99'],    // 连接成功率大于 99%
     handshake_duration: ['p(95)<200'],    // 握手延迟 p95 小于 200ms
     connection_errors: ['count<10']       // 错误数小于 10
-  }
+  },
+  setupTimeout: '120s'
 }
 
 // 设置阶段
@@ -47,13 +51,14 @@ export function setup() {
   console.log('========================================')
   console.log(`目标服务器: ${BASE_URL}`)
   console.log(`WebSocket: ${WS_URL}`)
-  console.log(`并发连接数: ${TEST_CONFIG.connection.vus}`)
+  console.log(`并发连接数: ${ACTUAL_VUS}`)
   console.log(`持续时间: ${TEST_CONFIG.connection.duration}`)
   console.log('----------------------------------------')
 
-  // 预先获取所有用户的 token
+  // 预先获取所有用户的 token（只登录实际需要的数量）
   const tokens = []
-  for (let i = 0; i < Math.min(USERS.length, TEST_CONFIG.connection.vus); i++) {
+  console.log(`准备登录 ${ACTUAL_VUS} 个用户...`)
+  for (let i = 0; i < Math.min(USERS.length, ACTUAL_VUS); i++) {
     const result = login(BASE_URL, USERS[i].account, USERS[i].password)
     if (result.success) {
       tokens.push({

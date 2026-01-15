@@ -25,6 +25,9 @@ const messageLatency = new Trend('message_latency', true)
 const messageCount = new Counter('message_count')
 const messageErrors = new Counter('message_errors')
 
+// 获取实际 VU 数量（命令行参数优先）
+const ACTUAL_VUS = parseInt(__ENV.VUS) || TEST_CONFIG.messaging.vus
+
 // 测试配置
 export const options = {
   scenarios: {
@@ -38,7 +41,8 @@ export const options = {
     message_sent: ['rate>0.99'],         // 发送成功率大于 99%
     message_latency: ['p(95)<500'],      // 消息延迟 p95 小于 500ms
     message_errors: ['count<100']        // 错误数小于 100
-  }
+  },
+  setupTimeout: '300s'  // setup 阶段超时 5 分钟
 }
 
 // 设置阶段
@@ -55,7 +59,11 @@ export function setup() {
   // 预先获取所有用户的 token 和好友列表
   const userContexts = []
 
-  for (let i = 0; i < Math.min(USERS.length, TEST_CONFIG.messaging.vus); i++) {
+  // 只登录实际需要的用户数量
+  const usersToLogin = Math.min(USERS.length, ACTUAL_VUS)
+  console.log(`准备登录 ${usersToLogin} 个用户...`)
+
+  for (let i = 0; i < usersToLogin; i++) {
     const result = login(BASE_URL, USERS[i].account, USERS[i].password)
     if (result.success) {
       // 获取好友列表
