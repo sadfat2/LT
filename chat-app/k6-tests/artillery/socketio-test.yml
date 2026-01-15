@@ -1,0 +1,66 @@
+# Artillery Socket.IO 测试配置
+# 测试 Socket.IO 连接和消息发送
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    # 预热阶段
+    - duration: 10
+      arrivalRate: 1
+      name: "Warm up"
+    # 正常负载阶段
+    - duration: 30
+      arrivalRate: 2
+      name: "Normal load"
+
+  # Socket.IO 引擎配置
+  engines:
+    socketio-v3:
+      transports: ["websocket"]
+
+  # 变量：测试用户池
+  variables:
+    userIndex:
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
+
+  # 自定义处理器
+  processor: "./processor.js"
+
+scenarios:
+  - name: "Socket.IO 连接和消息发送测试"
+    engine: socketio-v3
+    flow:
+      # 1. 先通过 HTTP 登录获取 token
+      - function: "login"
+
+      # 2. 使用 token 建立 Socket.IO 连接
+      - emit:
+          channel: "connection"
+          acknowledge: true
+
+      # 3. 等待连接建立
+      - think: 1
+
+      # 4. 发送测试消息
+      - loop:
+        - emit:
+            channel: "send_message"
+            data:
+              receiverId: "{{ friendId }}"
+              type: "text"
+              content: "Artillery 测试消息 {{ $timestamp }}"
+            acknowledge: true
+            response:
+              on: "message_sent"
+              capture:
+                - json: "$.messageId"
+                  as: "lastMessageId"
+        - think: 1
+        count: 5
+
+      # 5. 保持连接一段时间
+      - think: 5

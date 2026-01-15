@@ -95,6 +95,19 @@ const initSocket = (server) => {
     // 加入用户专属房间
     socket.join(`user_${userId}`);
 
+    // 加入所有群聊房间（房间广播优化）
+    try {
+      const groups = await Group.getUserGroups(userId);
+      for (const group of groups) {
+        socket.join(`group_${group.id}`);
+      }
+      if (groups.length > 0) {
+        console.log(`用户 ${userId} 加入 ${groups.length} 个群房间`);
+      }
+    } catch (error) {
+      console.error('加入群房间失败:', error);
+    }
+
     // 存储在线状态到 Redis
     await redisClient.set(`online:${userId}`, socket.id);
 
@@ -140,26 +153,20 @@ const initSocket = (server) => {
         const group = await Group.findByConversationId(convId);
 
         if (group) {
-          // 群聊消息：广播给所有群成员（除了发送者）
-          const memberIds = await Group.getMemberIds(group.id);
-          memberIds.forEach(memberId => {
-            if (memberId !== userId) {
-              io.to(`user_${memberId}`).emit('new_message', {
-                conversationId: convId,
-                message
-              });
-            }
+          // 群聊消息：使用房间广播（O(1) 复杂度，性能优化）
+          // socket.to() 会广播给房间内所有人（除了发送者自己）
+          const roomName = `group_${group.id}`;
+          socket.to(roomName).emit('new_message', {
+            conversationId: convId,
+            message
           });
+          console.log(`[群消息] 用户 ${userId} 发送到房间 ${roomName}`);
         } else {
           // 私聊消息
           let targetId = receiverId;
           if (!targetId) {
-            // 从会话中获取对方ID
-            const conversations = await Conversation.getUserConversations(userId);
-            const conv = conversations.find(c => c.id === convId);
-            if (conv && conv.other_user) {
-              targetId = conv.other_user.id;
-            }
+            // 直接从数据库获取对方ID（更高效、更可靠）
+            targetId = await Conversation.getOtherParticipant(convId, userId);
           }
 
           // 发送给接收者
@@ -168,6 +175,9 @@ const initSocket = (server) => {
               conversationId: convId,
               message
             });
+            console.log(`[私聊消息] 用户 ${userId} -> 用户 ${targetId}, 会话 ${convId}`);
+          } else {
+            console.warn(`[私聊消息] 找不到接收者，会话ID: ${convId}`);
           }
         }
 

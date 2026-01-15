@@ -24,6 +24,9 @@ export const useSocketStore = defineStore('socket', () => {
   const connected = ref(false)
   const onlineUsers = ref<Set<number>>(new Set())
 
+  // 待注册的事件监听器（解决时序问题：on 调用早于 socket 连接）
+  const pendingListeners = ref<Map<string, Set<(...args: any[]) => void>>>(new Map())
+
   const isConnected = computed(() => connected.value)
 
   // 连接 socket
@@ -49,6 +52,14 @@ export const useSocketStore = defineStore('socket', () => {
     socket.value.on('connect', () => {
       console.log('[Socket] 已连接，ID:', socket.value?.id, '连接地址:', SOCKET_URL)
       connected.value = true
+
+      // 注册之前挂起的事件监听器
+      pendingListeners.value.forEach((handlers, event) => {
+        handlers.forEach(handler => {
+          socket.value?.on(event, handler)
+        })
+        console.log(`[Socket] 已注册 ${handlers.size} 个待挂起的 ${event} 监听器`)
+      })
     })
 
     socket.value.on('disconnect', () => {
@@ -152,13 +163,26 @@ export const useSocketStore = defineStore('socket', () => {
     }
   }
 
-  // 监听事件
+  // 监听事件（支持 socket 未连接时挂起）
   const on = (event: string, handler: (...args: any[]) => void) => {
-    socket.value?.on(event, handler)
+    // 添加到待挂起列表（用于 socket 断开重连后恢复）
+    if (!pendingListeners.value.has(event)) {
+      pendingListeners.value.set(event, new Set())
+    }
+    pendingListeners.value.get(event)!.add(handler)
+
+    // 如果 socket 已连接，立即注册
+    if (socket.value?.connected) {
+      socket.value.on(event, handler)
+    }
   }
 
   // 移除事件监听
   const off = (event: string, handler?: (...args: any[]) => void) => {
+    // 从待挂起列表移除
+    if (handler && pendingListeners.value.has(event)) {
+      pendingListeners.value.get(event)!.delete(handler)
+    }
     socket.value?.off(event, handler)
   }
 

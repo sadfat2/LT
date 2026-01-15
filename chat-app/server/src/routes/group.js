@@ -5,6 +5,7 @@ const { Friend } = require('../models/Friend');
 const authMiddleware = require('../middlewares/auth');
 const { AppError } = require('../middlewares/errorHandler');
 const { getIO } = require('../socket');
+const Cache = require('../config/cache');
 
 const router = express.Router();
 
@@ -37,8 +38,19 @@ router.post('/', authMiddleware, async (req, res, next) => {
 
     const group = await Group.getDetail(groupId);
 
-    // 通知所有成员
+    // 通知所有成员并让他们加入群房间
     const io = getIO();
+    const allMemberIds = [req.user.id, ...memberIds.filter(id => id !== req.user.id)];
+
+    // 让所有成员的 socket 加入群房间
+    for (const memberId of allMemberIds) {
+      const sockets = await io.in(`user_${memberId}`).fetchSockets();
+      for (const s of sockets) {
+        s.join(`group_${groupId}`);
+      }
+    }
+
+    // 通知其他成员
     memberIds.forEach(memberId => {
       if (memberId !== req.user.id) {
         io.to(`user_${memberId}`).emit('group_created', {
@@ -131,11 +143,18 @@ router.post('/:id/invite', authMiddleware, async (req, res, next) => {
 
     await Group.addMembers(groupId, userIds, req.user.id);
 
+    // 失效群成员缓存
+    await Cache.invalidateGroupMembers(groupId);
+
     const group = await Group.getDetail(groupId);
 
-    // 通知新成员
+    // 让新成员的 socket 加入群房间，并通知他们
     const io = getIO();
-    userIds.forEach(userId => {
+    for (const userId of userIds) {
+      const sockets = await io.in(`user_${userId}`).fetchSockets();
+      for (const s of sockets) {
+        s.join(`group_${groupId}`);
+      }
       io.to(`user_${userId}`).emit('group_joined', {
         group,
         conversationId: group.conversation_id,
@@ -144,7 +163,7 @@ router.post('/:id/invite', authMiddleware, async (req, res, next) => {
           nickname: req.user.nickname || req.user.account
         }
       });
-    });
+    }
 
     // 通知现有成员
     const existingMemberIds = await Group.getMemberIds(groupId);
@@ -192,8 +211,17 @@ router.post('/:id/leave', authMiddleware, async (req, res, next) => {
 
     await Group.leave(groupId, req.user.id);
 
-    // 通知其他成员
+    // 失效群成员缓存
+    await Cache.invalidateGroupMembers(groupId);
+
+    // 让退出用户的 socket 离开群房间
     const io = getIO();
+    const leavingSockets = await io.in(`user_${req.user.id}`).fetchSockets();
+    for (const s of leavingSockets) {
+      s.leave(`group_${groupId}`);
+    }
+
+    // 通知其他成员
     const memberIds = await Group.getMemberIds(groupId);
     memberIds.forEach(memberId => {
       io.to(`user_${memberId}`).emit('member_left', {
@@ -225,6 +253,9 @@ router.put('/:id', authMiddleware, async (req, res, next) => {
     }
 
     await Group.update(groupId, { name, avatar });
+
+    // 失效群信息缓存
+    await Cache.invalidateGroup(groupId);
 
     const group = await Group.getDetail(groupId);
 
@@ -267,8 +298,17 @@ router.delete('/:id/members/:userId', authMiddleware, async (req, res, next) => 
     const targetUser = await User.findById(targetUserId);
     await Group.removeMember(groupId, targetUserId);
 
-    // 通知被移除的成员
+    // 失效群成员缓存
+    await Cache.invalidateGroupMembers(groupId);
+
+    // 让被移除用户的 socket 离开群房间
     const io = getIO();
+    const removedSockets = await io.in(`user_${targetUserId}`).fetchSockets();
+    for (const s of removedSockets) {
+      s.leave(`group_${groupId}`);
+    }
+
+    // 通知被移除的成员
     io.to(`user_${targetUserId}`).emit('removed_from_group', {
       groupId,
       groupName: (await Group.findById(groupId))?.name
@@ -308,16 +348,24 @@ router.delete('/:id', authMiddleware, async (req, res, next) => {
 
     await Group.dissolve(groupId, req.user.id);
 
-    // 通知所有成员
+    // 失效群相关缓存
+    await Cache.invalidateGroupMembers(groupId);
+    await Cache.invalidateGroup(groupId);
+
+    // 让所有成员的 socket 离开群房间，并通知他们
     const io = getIO();
-    memberIds.forEach(memberId => {
+    for (const memberId of memberIds) {
+      const sockets = await io.in(`user_${memberId}`).fetchSockets();
+      for (const s of sockets) {
+        s.leave(`group_${groupId}`);
+      }
       if (memberId !== req.user.id) {
         io.to(`user_${memberId}`).emit('group_dissolved', {
           groupId,
           groupName: group.name
         });
       }
-    });
+    }
 
     res.json({
       code: 200,

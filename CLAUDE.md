@@ -82,10 +82,13 @@ npm run build           # 构建生产版本
 | 数据库初始化 | `chat-app/server/sql/init.sql` |
 | 数据库迁移 | `chat-app/server/sql/migrate_v2.sql` |
 | 后台管理迁移 | `chat-app/server/sql/migrate_admin.sql` |
+| 性能优化迁移 | `chat-app/server/sql/migrate_performance.sql` |
+| Redis 缓存工具 | `chat-app/server/src/config/cache.js` |
 | 后台管理前端 | `chat-app/admin/` |
 | 后台管理 API | `chat-app/server/src/routes/admin/` |
 | 管理员模型 | `chat-app/server/src/models/Admin.js` |
 | 推荐链接模型 | `chat-app/server/src/models/ReferralLink.js` |
+| 性能优化文档 | `chat-app/docs/PERFORMANCE_OPTIMIZATION.md` |
 
 ### Pinia Stores 职责
 
@@ -511,6 +514,9 @@ docker exec -i chat-mysql mysql -uroot -proot123456 chat_app < chat-app/server/s
 # 后台管理系统迁移（创建管理员表、推荐链接表等）
 docker exec -i chat-mysql mysql -uroot -proot123456 chat_app < chat-app/server/sql/migrate_admin.sql
 
+# 性能优化迁移（创建索引、全文索引等）
+docker exec -i chat-mysql mysql -uroot -proot123456 chat_app < chat-app/server/sql/migrate_performance.sql
+
 # 方式二：重建数据库（清除所有数据）
 cd chat-app
 docker-compose down -v
@@ -523,11 +529,20 @@ docker-compose up -d
 # 查看 Redis 中的在线用户
 docker exec -it chat-redis redis-cli KEYS "online:*"
 
+# 查看 Redis 缓存（用户、好友、群组等）
+docker exec -it chat-redis redis-cli KEYS "*"
+
+# 查看 Redis 缓存命中率
+docker exec -it chat-redis redis-cli INFO stats | grep -E "keyspace_hits|keyspace_misses"
+
 # 查看数据库中的消息
 docker exec -it chat-mysql mysql -uroot -proot123456 chat_app -e "SELECT * FROM messages ORDER BY id DESC LIMIT 10;"
 
 # 查看群组列表
 docker exec -it chat-mysql mysql -uroot -proot123456 chat_app -e "SELECT g.*, u.nickname as owner_name FROM groups g JOIN users u ON g.owner_id = u.id;"
+
+# 查看数据库索引
+docker exec -it chat-mysql mysql -uroot -proot123456 chat_app -e "SHOW INDEX FROM messages;"
 
 # 实时监控后端日志
 docker-compose logs -f server 2>&1 | grep -E "(Socket|message|error)"

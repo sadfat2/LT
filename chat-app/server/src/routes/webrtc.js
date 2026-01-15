@@ -1,26 +1,23 @@
 const express = require('express');
 const authMiddleware = require('../middlewares/auth');
+const redisClient = require('../config/redis');
 
 const router = express.Router();
 
-// 缓存 TURN 凭据（有效期 5 分钟）
-let cachedCredentials = null;
-let cacheExpiry = 0;
+const TURN_CACHE_KEY = 'turn:credentials';
+const TURN_CACHE_TTL = 300; // 5 分钟
 
 /**
  * 获取 TURN 服务器凭据
  * 代理 Cloudflare 的 TURN 凭据 API，避免 CORS 问题
+ * 使用 Redis 缓存支持多进程共享
  */
 router.get('/turn-credentials', authMiddleware, async (req, res) => {
   try {
-    const now = Date.now();
-
-    // 如果缓存有效，直接返回
-    if (cachedCredentials && now < cacheExpiry) {
-      return res.json({
-        code: 200,
-        data: cachedCredentials
-      });
+    // 从 Redis 获取缓存
+    const cached = await redisClient.get(TURN_CACHE_KEY);
+    if (cached) {
+      return res.json({ code: 200, data: JSON.parse(cached) });
     }
 
     // 从 Cloudflare 获取新凭据
@@ -32,14 +29,10 @@ router.get('/turn-credentials', authMiddleware, async (req, res) => {
 
     const data = await response.json();
 
-    // 缓存 5 分钟
-    cachedCredentials = data;
-    cacheExpiry = now + 5 * 60 * 1000;
+    // 存入 Redis（多进程共享）
+    await redisClient.setEx(TURN_CACHE_KEY, TURN_CACHE_TTL, JSON.stringify(data));
 
-    res.json({
-      code: 200,
-      data: data
-    });
+    res.json({ code: 200, data });
   } catch (error) {
     console.error('获取 TURN 凭据错误:', error);
     res.status(500).json({

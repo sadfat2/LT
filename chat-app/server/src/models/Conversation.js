@@ -1,102 +1,155 @@
 const pool = require('../config/database');
+const redisClient = require('../config/redis');
+
+// 辅助函数：等待
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 class Conversation {
-  // 获取或创建私聊会话
+  // 获取或创建私聊会话（使用 Redis 分布式锁防止并发竞态）
   static async getOrCreatePrivate(userId1, userId2) {
-    // 查找是否存在私聊会话
+    // 保证用户ID顺序一致性，避免死锁
+    const [smallId, bigId] = userId1 < userId2
+      ? [userId1, userId2]
+      : [userId2, userId1];
+
+    const lockKey = `lock:private:${smallId}:${bigId}`;
+    const maxRetries = 10;
+    const retryDelay = 100; // ms
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      // 尝试获取分布式锁（5秒过期，防止死锁）
+      const lockAcquired = await redisClient.set(lockKey, '1', {
+        NX: true,  // 仅当 key 不存在时设置
+        EX: 5      // 5秒后自动过期
+      });
+
+      if (lockAcquired) {
+        try {
+          // 再次查询会话（double-check）
+          const [existing] = await pool.execute(
+            `SELECT c.id FROM conversations c
+             JOIN conversation_participants cp1 ON c.id = cp1.conversation_id AND cp1.user_id = ?
+             JOIN conversation_participants cp2 ON c.id = cp2.conversation_id AND cp2.user_id = ?
+             WHERE c.type = 'private'`,
+            [smallId, bigId]
+          );
+
+          if (existing.length > 0) {
+            return { id: existing[0].id, isNew: false };
+          }
+
+          // 创建新会话
+          const connection = await pool.getConnection();
+          try {
+            await connection.beginTransaction();
+
+            const [result] = await connection.execute(
+              "INSERT INTO conversations (type) VALUES ('private')"
+            );
+            const conversationId = result.insertId;
+
+            await connection.execute(
+              'INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?), (?, ?)',
+              [conversationId, smallId, conversationId, bigId]
+            );
+
+            await connection.commit();
+            return { id: conversationId, isNew: true };
+          } catch (error) {
+            await connection.rollback();
+            throw error;
+          } finally {
+            connection.release();
+          }
+        } finally {
+          // 释放锁
+          await redisClient.del(lockKey);
+        }
+      }
+
+      // 未获取到锁，等待后重试
+      await sleep(retryDelay);
+    }
+
+    // 重试次数用尽，使用降级方案：直接查询
     const [existing] = await pool.execute(
       `SELECT c.id FROM conversations c
        JOIN conversation_participants cp1 ON c.id = cp1.conversation_id AND cp1.user_id = ?
        JOIN conversation_participants cp2 ON c.id = cp2.conversation_id AND cp2.user_id = ?
        WHERE c.type = 'private'`,
-      [userId1, userId2]
+      [smallId, bigId]
     );
 
     if (existing.length > 0) {
       return { id: existing[0].id, isNew: false };
     }
 
-    // 创建新会话
-    const connection = await pool.getConnection();
-    try {
-      await connection.beginTransaction();
-
-      const [result] = await connection.execute(
-        "INSERT INTO conversations (type) VALUES ('private')"
-      );
-      const conversationId = result.insertId;
-
-      await connection.execute(
-        'INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?), (?, ?)',
-        [conversationId, userId1, conversationId, userId2]
-      );
-
-      await connection.commit();
-      return { id: conversationId, isNew: true };
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
+    throw new Error('无法创建私聊会话：获取锁失败');
   }
 
-  // 获取用户的会话列表
+  // 获取用户的会话列表（批量查询优化，避免 N+1 问题）
   static async getUserConversations(userId) {
-    const [rows] = await pool.execute(
-      `SELECT c.id, c.type, c.group_id, c.updated_at,
-              (SELECT JSON_OBJECT(
-                'id', u.id,
-                'nickname', u.nickname,
-                'avatar', u.avatar
-              )
-              FROM conversation_participants cp2
-              JOIN users u ON cp2.user_id = u.id
-              WHERE cp2.conversation_id = c.id AND cp2.user_id != ?
-              LIMIT 1) as other_user,
-              (SELECT JSON_OBJECT(
-                'id', m.id,
-                'type', m.type,
-                'content', m.content,
-                'sender_id', m.sender_id,
-                'created_at', m.created_at,
-                'status', m.status
-              )
-              FROM messages m
-              WHERE m.conversation_id = c.id
-              ORDER BY m.created_at DESC
-              LIMIT 1) as last_message,
-              (SELECT COUNT(*)
-               FROM messages m
-               WHERE m.conversation_id = c.id
-               AND m.sender_id != ?
-               AND (m.status = 'sent' OR m.status = 'delivered')
-               AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')) as unread_count,
-              g.id as group_info_id,
-              g.name as group_name,
-              g.avatar as group_avatar
-       FROM conversations c
-       JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = ?
-       LEFT JOIN \`groups\` g ON c.group_id = g.id
-       ORDER BY c.updated_at DESC`,
-      [userId, userId, userId]
-    );
+    // 1. 主查询：获取会话基础信息
+    const [conversations] = await pool.execute(`
+      SELECT c.id, c.type, c.group_id, c.updated_at, cp.last_read_at,
+             g.id as group_info_id, g.name as group_name, g.avatar as group_avatar
+      FROM conversations c
+      JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = ?
+      LEFT JOIN \`groups\` g ON c.group_id = g.id
+      ORDER BY c.updated_at DESC
+    `, [userId]);
 
-    // 获取群聊的成员头像（最多4个）
-    const groupIds = rows.filter(r => r.type === 'group' && r.group_id).map(r => r.group_id);
+    if (conversations.length === 0) return [];
+
+    const convIds = conversations.map(c => c.id);
+    const placeholders = convIds.map(() => '?').join(',');
+
+    // 2. 批量获取私聊对方信息
+    const [otherUsers] = await pool.query(`
+      SELECT cp.conversation_id, u.id, u.nickname, u.avatar
+      FROM conversation_participants cp
+      JOIN users u ON cp.user_id = u.id
+      JOIN conversations c ON cp.conversation_id = c.id
+      WHERE cp.conversation_id IN (${placeholders})
+        AND cp.user_id != ?
+        AND c.type = 'private'
+    `, [...convIds, userId]);
+
+    // 3. 批量获取最后消息（使用 ROW_NUMBER 窗口函数）
+    const [lastMessages] = await pool.query(`
+      SELECT m.* FROM (
+        SELECT m.id, m.conversation_id, m.type, m.content, m.sender_id, m.created_at, m.status,
+               ROW_NUMBER() OVER (PARTITION BY conversation_id ORDER BY created_at DESC) as rn
+        FROM messages m
+        WHERE m.conversation_id IN (${placeholders})
+      ) m WHERE m.rn = 1
+    `, convIds);
+
+    // 4. 批量获取未读数
+    const [unreadCounts] = await pool.query(`
+      SELECT m.conversation_id, COUNT(*) as count
+      FROM messages m
+      JOIN conversation_participants cp ON m.conversation_id = cp.conversation_id AND cp.user_id = ?
+      WHERE m.conversation_id IN (${placeholders})
+        AND m.sender_id != ?
+        AND m.status IN ('sent', 'delivered')
+        AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')
+      GROUP BY m.conversation_id
+    `, [userId, ...convIds, userId]);
+
+    // 5. 批量获取群成员头像（最多4个）
+    const groupIds = conversations.filter(c => c.type === 'group' && c.group_id).map(c => c.group_id);
     let groupMembersMap = {};
 
     if (groupIds.length > 0) {
-      const placeholders = groupIds.map(() => '?').join(',');
-      const [members] = await pool.query(
-        `SELECT gm.group_id, u.id, u.avatar, u.nickname
-         FROM group_members gm
-         JOIN users u ON gm.user_id = u.id
-         WHERE gm.group_id IN (${placeholders})
-         ORDER BY gm.group_id, gm.joined_at
-         LIMIT 100`,
-        groupIds
-      );
+      const groupPlaceholders = groupIds.map(() => '?').join(',');
+      const [members] = await pool.query(`
+        SELECT gm.group_id, u.id, u.avatar, u.nickname
+        FROM group_members gm
+        JOIN users u ON gm.user_id = u.id
+        WHERE gm.group_id IN (${groupPlaceholders})
+        ORDER BY gm.group_id, gm.joined_at
+      `, groupIds);
 
       // 按群组分组，每组最多取4个
       for (const member of members) {
@@ -113,45 +166,45 @@ class Conversation {
       }
     }
 
-    return rows.map(row => {
-      let other_user = row.other_user;
-      let last_message = row.last_message;
+    // 6. 应用层聚合
+    const otherUsersMap = new Map(otherUsers.map(u => [u.conversation_id, u]));
+    const lastMessagesMap = new Map(lastMessages.map(m => [m.conversation_id, m]));
+    const unreadCountsMap = new Map(unreadCounts.map(c => [c.conversation_id, c.count]));
 
-      // 处理 JSON 字段（可能是字符串或对象）
-      if (other_user && typeof other_user === 'string') {
-        try {
-          other_user = JSON.parse(other_user);
-        } catch (e) {
-          other_user = null;
-        }
-      }
-      if (last_message && typeof last_message === 'string') {
-        try {
-          last_message = JSON.parse(last_message);
-        } catch (e) {
-          last_message = null;
-        }
-      }
+    return conversations.map(conv => {
+      const otherUser = otherUsersMap.get(conv.id);
+      const lastMsg = lastMessagesMap.get(conv.id);
 
       // 构建群聊信息
       let group_info = null;
-      if (row.type === 'group' && row.group_id) {
+      if (conv.type === 'group' && conv.group_id) {
         group_info = {
-          id: row.group_id,
-          name: row.group_name,
-          avatar: row.group_avatar,
-          member_avatars: groupMembersMap[row.group_id] || []
+          id: conv.group_id,
+          name: conv.group_name,
+          avatar: conv.group_avatar,
+          member_avatars: groupMembersMap[conv.group_id] || []
         };
       }
 
       return {
-        id: row.id,
-        type: row.type,
-        group_id: row.group_id,
-        updated_at: row.updated_at,
-        other_user,
-        last_message,
-        unread_count: row.unread_count,
+        id: conv.id,
+        type: conv.type,
+        group_id: conv.group_id,
+        updated_at: conv.updated_at,
+        other_user: conv.type === 'private' && otherUser ? {
+          id: otherUser.id,
+          nickname: otherUser.nickname,
+          avatar: otherUser.avatar
+        } : null,
+        last_message: lastMsg ? {
+          id: lastMsg.id,
+          type: lastMsg.type,
+          content: lastMsg.content,
+          sender_id: lastMsg.sender_id,
+          created_at: lastMsg.created_at,
+          status: lastMsg.status
+        } : null,
+        unread_count: unreadCountsMap.get(conv.id) || 0,
         group_info
       };
     });
@@ -180,6 +233,17 @@ class Conversation {
       'UPDATE conversation_participants SET last_read_at = CURRENT_TIMESTAMP WHERE conversation_id = ? AND user_id = ?',
       [conversationId, userId]
     );
+  }
+
+  // 获取私聊会话的另一方用户ID
+  static async getOtherParticipant(conversationId, userId) {
+    const [rows] = await pool.execute(
+      `SELECT cp.user_id FROM conversation_participants cp
+       JOIN conversations c ON cp.conversation_id = c.id
+       WHERE c.id = ? AND c.type = 'private' AND cp.user_id != ?`,
+      [conversationId, userId]
+    );
+    return rows[0]?.user_id || null;
   }
 
   // 搜索好友

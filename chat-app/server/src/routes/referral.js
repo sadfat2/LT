@@ -2,11 +2,28 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const ReferralLink = require('../models/ReferralLink');
+const IpRegisterLimit = require('../models/IpRegisterLimit');
 const pool = require('../config/database');
 const config = require('../config');
 const { AppError } = require('../middlewares/errorHandler');
 
 const router = express.Router();
+
+// 获取客户端真实 IP
+function getClientIp(req) {
+  // 优先从 X-Forwarded-For 获取（反向代理场景）
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  // 其次从 X-Real-IP 获取
+  const realIp = req.headers['x-real-ip'];
+  if (realIp) {
+    return realIp;
+  }
+  // 最后使用 req.ip
+  return req.ip || req.connection.remoteAddress;
+}
 
 /**
  * 生成随机账号
@@ -86,6 +103,21 @@ router.post('/auto-register/:code', async (req, res, next) => {
       throw new AppError('推荐链接已失效', 400);
     }
 
+    // IP 限制检查
+    const clientIp = getClientIp(req);
+    console.log('[自动注册] 客户端IP:', clientIp, '推荐码:', code, 'IP限制启用:', config.ipLimit.enabled);
+    if (config.ipLimit.enabled) {
+      const canRegister = await IpRegisterLimit.canRegister(
+        clientIp,
+        link.id,
+        config.ipLimit.maxRegistrationsPerLink
+      );
+
+      if (!canRegister) {
+        throw new AppError('该IP已通过此推荐链接注册过，无法再次注册', 403);
+      }
+    }
+
     await connection.beginTransaction();
 
     // 生成账号和密码
@@ -148,6 +180,20 @@ router.post('/auto-register/:code', async (req, res, next) => {
       'UPDATE referral_links SET register_count = register_count + 1 WHERE id = ?',
       [link.id]
     );
+
+    // 记录注册 IP
+    await connection.execute(
+      'UPDATE users SET register_ip = ? WHERE id = ?',
+      [clientIp, newUserId]
+    );
+
+    // 记录 IP 注册（用于限制）
+    if (config.ipLimit.enabled) {
+      await connection.execute(
+        'INSERT INTO ip_register_limits (ip_address, referral_link_id, user_id) VALUES (?, ?, ?)',
+        [clientIp, link.id, newUserId]
+      );
+    }
 
     await connection.commit();
 

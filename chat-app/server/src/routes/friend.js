@@ -4,6 +4,7 @@ const User = require('../models/User');
 const authMiddleware = require('../middlewares/auth');
 const { AppError } = require('../middlewares/errorHandler');
 const { getIO } = require('../socket');
+const Cache = require('../config/cache');
 
 const router = express.Router();
 
@@ -140,6 +141,9 @@ router.post('/accept/:id', authMiddleware, async (req, res, next) => {
     // 添加好友关系
     await Friend.addFriend(request.from_user_id, request.to_user_id);
 
+    // 失效双方好友列表缓存
+    await Cache.invalidateFriendsPair(request.from_user_id, request.to_user_id);
+
     // 发送实时通知
     const io = getIO();
     const currentUser = await User.findById(req.user.id);
@@ -207,6 +211,9 @@ router.put('/:friendId/remark', authMiddleware, async (req, res, next) => {
 
     // 更新备注
     await Friend.updateRemark(req.user.id, friendId, remark);
+
+    // 失效好友列表缓存
+    await Cache.invalidateFriends(req.user.id);
 
     res.json({
       code: 200,
