@@ -1,5 +1,7 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const { createAdapter } = require('@socket.io/redis-adapter');
+const { createClient } = require('redis');
 const config = require('../config');
 const redisClient = require('../config/redis');
 const Message = require('../models/Message');
@@ -38,6 +40,25 @@ const initSocket = (server) => {
     // 连接超时
     connectTimeout: 45000
   });
+
+  // PM2 多进程模式下使用 Redis adapter
+  // 允许不同进程间共享 Socket.io 状态
+  const pubClient = createClient({
+    socket: {
+      host: config.redis.host,
+      port: config.redis.port
+    }
+  });
+  const subClient = pubClient.duplicate();
+
+  Promise.all([pubClient.connect(), subClient.connect()])
+    .then(() => {
+      io.adapter(createAdapter(pubClient, subClient));
+      console.log('Socket.io Redis adapter 已启用（支持多进程）');
+    })
+    .catch(err => {
+      console.error('Redis adapter 连接失败:', err);
+    });
 
   // 认证中间件
   io.use(async (socket, next) => {
