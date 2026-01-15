@@ -1,0 +1,36 @@
+{
+  "name": "artillery-tests",
+  "version": "2.0.0",
+  "description": "聊天系统 Artillery 性能测试套件",
+  "scripts": {
+    "generate-tokens": "cd artillery && node generate-tokens.js",
+    "test:message": "npx artillery run artillery/message-test.yml",
+    "test:connection": "npx artillery run artillery/connection-test.yml",
+    "test:group": "npx artillery run artillery/group-message-test.yml",
+    "test:api": "npx artillery run artillery/api-test.yml",
+    "test:stress": "npx artillery run artillery/stress-test.yml",
+    "test:realistic": "npx artillery run artillery/realistic-test.yml",
+    "test:quick": "npm run generate-tokens && npm run test:message",
+    "test:full": "npm run generate-tokens && npm run test:connection && npm run test:message && npm run test:group && npm run test:api",
+    "test": "npm run test:quick",
+    "report": "npx artillery report",
+    "setup": "cd setup && npm install && node create-users.js"
+  },
+  "keywords": [
+    "artillery",
+    "performance",
+    "socket.io",
+    "load-testing",
+    "chat",
+    "websocket"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "artillery": "^2.0.27",
+    "artillery-engine-socketio-v3": "^1.2.0",
+    "axios": "^1.13.2",
+    "socket.io-client": "^4.8.3"
+  }
+}

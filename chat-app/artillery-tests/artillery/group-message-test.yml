@@ -1,0 +1,142 @@
+# Artillery 群聊消息测试
+#
+# 测试目标：
+# 1. 群聊消息发送性能
+# 2. 群消息广播效率
+# 3. 多群并发消息处理
+#
+# 用法:
+#   artillery run artillery/group-message-test.yml
+
+config:
+  target: "https://chat.laoyegong.xyz"
+
+  phases:
+    # 预热
+    - duration: 10
+      arrivalRate: 1
+      name: "Warm up"
+
+    # 正常负载
+    - duration: 40
+      arrivalRate: 3
+      name: "Normal load (3/s)"
+
+    # 高峰负载
+    - duration: 30
+      arrivalRate: 6
+      name: "Peak load (6/s)"
+
+    # 冷却
+    - duration: 10
+      arrivalRate: 1
+      name: "Cool down"
+
+  payload:
+    path: "./tokens.csv"
+    fields:
+      - "account"
+      - "userId"
+      - "token"
+      - "friendId"
+      - "groupId"
+      - "groupConversationId"
+    order: random
+
+  engines:
+    socketio-v3:
+      transports: ["websocket"]
+      reconnection: false
+      timeout: 15000
+
+scenarios:
+  - name: "群聊消息发送"
+    engine: socketio-v3
+    flow:
+      # 连接
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      # 等待连接稳定
+      - think: 2
+
+      # 批量发送群消息
+      - loop:
+        - emit:
+            channel: "send_message"
+            data:
+              conversationId: "{{ groupConversationId }}"
+              type: "text"
+              content: "群消息测试 [{{ account }}] {{ $timestamp }} - {{ $loopCount }}"
+        - think: 2
+        count: 5
+
+      # 保持连接等待消息回执
+      - think: 5
+
+  - name: "群聊高频消息"
+    weight: 2
+    engine: socketio-v3
+    flow:
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      - think: 1
+
+      # 快速连续发送消息 (模拟活跃用户)
+      - loop:
+        - emit:
+            channel: "send_message"
+            data:
+              conversationId: "{{ groupConversationId }}"
+              type: "text"
+              content: "快速消息 {{ $timestamp }}"
+        - think: 0.5
+        count: 10
+
+      - think: 3
+
+  - name: "群聊消息接收"
+    weight: 1
+    engine: socketio-v3
+    flow:
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      # 只监听消息，不发送 (模拟潜水用户)
+      - think: 30
+
+  - name: "混合私聊+群聊"
+    weight: 2
+    engine: socketio-v3
+    flow:
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      - think: 1
+
+      # 交替发送私聊和群聊消息
+      - loop:
+        # 私聊消息
+        - emit:
+            channel: "send_message"
+            data:
+              receiverId: "{{ friendId }}"
+              type: "text"
+              content: "私聊 {{ $timestamp }}"
+        - think: 1
+        # 群聊消息
+        - emit:
+            channel: "send_message"
+            data:
+              conversationId: "{{ groupConversationId }}"
+              type: "text"
+              content: "群聊 {{ $timestamp }}"
+        - think: 1
+        count: 5
+
+      - think: 3

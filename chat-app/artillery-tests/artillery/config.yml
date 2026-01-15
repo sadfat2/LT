@@ -1,0 +1,47 @@
+# Artillery 通用配置
+# 被其他测试文件引用
+
+config:
+  # 默认目标服务器 (可通过环境变量覆盖)
+  target: "{{ $processEnvironment.TARGET_URL }}"
+
+  # 全局变量
+  variables:
+    defaultPassword: "password123"
+
+  # Socket.IO 引擎配置
+  engines:
+    socketio-v3:
+      transports: ["websocket"]
+      reconnection: false
+      timeout: 10000
+
+  # HTTP 配置
+  http:
+    timeout: 30
+    pool: 100
+
+  # 通用 phases 模板
+  phases:
+    - duration: 10
+      arrivalRate: 1
+      name: "Warm up"
+    - duration: 30
+      arrivalRate: 5
+      name: "Normal load"
+    - duration: 20
+      arrivalRate: 2
+      name: "Cool down"
+
+  # 从 CSV 读取预生成的 token
+  payload:
+    path: "./tokens.csv"
+    fields:
+      - "account"
+      - "userId"
+      - "token"
+      - "friendId"
+      - "groupId"
+      - "groupConversationId"
+    order: random
+    skipHeader: true

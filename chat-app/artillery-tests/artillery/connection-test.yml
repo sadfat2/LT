@@ -1,0 +1,109 @@
+# Artillery Socket.IO 连接稳定性测试
+#
+# 测试目标：
+# 1. 验证 Socket.IO 连接建立成功率
+# 2. 测试连接保持稳定性
+# 3. 测量连接延迟
+#
+# 用法:
+#   artillery run artillery/connection-test.yml
+
+config:
+  target: "https://chat.laoyegong.xyz"
+
+  phases:
+    # 阶段1: 缓慢增加连接
+    - duration: 20
+      arrivalRate: 2
+      name: "Ramp up (2/s)"
+
+    # 阶段2: 持续稳定连接
+    - duration: 60
+      arrivalRate: 5
+      name: "Sustained load (5/s)"
+
+    # 阶段3: 峰值测试
+    - duration: 30
+      arrivalRate: 10
+      name: "Peak load (10/s)"
+
+    # 阶段4: 冷却
+    - duration: 20
+      arrivalRate: 1
+      name: "Cool down"
+
+  payload:
+    path: "./tokens.csv"
+    fields:
+      - "account"
+      - "userId"
+      - "token"
+      - "friendId"
+    order: random
+
+  engines:
+    socketio-v3:
+      transports: ["websocket"]
+      reconnection: false
+      timeout: 15000
+
+  # 自定义指标
+  plugins:
+    metrics-by-endpoint: {}
+
+scenarios:
+  - name: "Socket.IO 连接测试"
+    engine: socketio-v3
+    flow:
+      # 建立连接 (带认证)
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      # 验证连接成功 - 等待用户列表事件
+      - think: 1
+
+      # 监听上线通知
+      - emit:
+          channel: "ping"
+          data: {}
+
+      # 保持连接一段时间 (模拟真实用户)
+      - think: 30
+
+      # 发送心跳
+      - emit:
+          channel: "ping"
+          data: {}
+
+      # 再保持一段时间
+      - think: 30
+
+  - name: "快速连接/断开测试"
+    weight: 2
+    engine: socketio-v3
+    flow:
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      - think: 2
+
+      # 快速断开 (测试服务器连接清理)
+      - disconnect: true
+
+  - name: "长连接稳定性测试"
+    weight: 1
+    engine: socketio-v3
+    flow:
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      # 长时间保持连接 (2分钟)
+      - loop:
+        - think: 10
+        - emit:
+            channel: "ping"
+            data: {}
+        count: 12

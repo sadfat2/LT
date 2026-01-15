@@ -1,0 +1,152 @@
+# Artillery 高并发压力测试
+#
+# 警告: 此测试会对服务器造成较大压力，请谨慎使用
+#
+# 测试目标：
+# 1. 测试系统最大并发连接数
+# 2. 测试高负载下的消息处理能力
+# 3. 发现系统瓶颈和崩溃点
+#
+# 用法:
+#   artillery run artillery/stress-test.yml
+
+config:
+  target: "https://chat.laoyegong.xyz"
+
+  phases:
+    # 阶段1: 缓慢预热
+    - duration: 30
+      arrivalRate: 5
+      name: "Warm up (5/s)"
+
+    # 阶段2: 线性增长到中等负载
+    - duration: 60
+      arrivalRate: 10
+      rampTo: 20
+      name: "Ramp to 20/s"
+
+    # 阶段3: 高负载持续
+    - duration: 120
+      arrivalRate: 20
+      name: "High load (20/s)"
+
+    # 阶段4: 峰值冲击
+    - duration: 60
+      arrivalRate: 30
+      name: "Peak stress (30/s)"
+
+    # 阶段5: 冷却恢复
+    - duration: 30
+      arrivalRate: 5
+      name: "Cool down"
+
+  payload:
+    path: "./tokens.csv"
+    fields:
+      - "account"
+      - "userId"
+      - "token"
+      - "friendId"
+      - "groupId"
+      - "groupConversationId"
+    order: random
+
+  engines:
+    socketio-v3:
+      transports: ["websocket"]
+      reconnection: false
+      timeout: 20000
+
+scenarios:
+  # 场景1: 高频消息发送
+  - name: "高频消息发送者"
+    weight: 4
+    engine: socketio-v3
+    flow:
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      - think: 1
+
+      # 快速发送大量消息
+      - loop:
+        - emit:
+            channel: "send_message"
+            data:
+              receiverId: "{{ friendId }}"
+              type: "text"
+              content: "压力测试消息 {{ $timestamp }} - {{ $loopCount }}"
+        - think: 0.3
+        count: 20
+
+      # 群消息
+      - loop:
+        - emit:
+            channel: "send_message"
+            data:
+              conversationId: "{{ groupConversationId }}"
+              type: "text"
+              content: "压力群消息 {{ $timestamp }}"
+        - think: 0.3
+        count: 10
+
+      - think: 5
+
+  # 场景2: 长连接用户
+  - name: "长连接保持"
+    weight: 3
+    engine: socketio-v3
+    flow:
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      # 保持连接 3 分钟
+      - loop:
+        - think: 10
+        - emit:
+            channel: "ping"
+            data: {}
+        count: 18
+
+  # 场景3: 快速连接/断开
+  - name: "连接风暴"
+    weight: 2
+    engine: socketio-v3
+    flow:
+      - connect:
+          query:
+            token: "{{ token }}"
+      - think: 1
+      - disconnect: true
+
+  # 场景4: 混合读写
+  - name: "混合负载"
+    weight: 3
+    engine: socketio-v3
+    flow:
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      - think: 2
+
+      # 发送一些消息后等待
+      - loop:
+        - emit:
+            channel: "send_message"
+            data:
+              receiverId: "{{ friendId }}"
+              type: "text"
+              content: "混合测试 {{ $timestamp }}"
+        - think: 2
+        - emit:
+            channel: "typing"
+            data:
+              receiverId: "{{ friendId }}"
+        - think: 1
+        count: 5
+
+      # 等待消息
+      - think: 30

@@ -1,0 +1,170 @@
+# Artillery REST API 性能测试
+#
+# 测试目标：
+# 1. HTTP API 响应时间
+# 2. 登录接口吞吐量
+# 3. 各类 API 端点性能
+#
+# 用法:
+#   artillery run artillery/api-test.yml
+
+config:
+  target: "https://chat.laoyegong.xyz"
+
+  phases:
+    # 预热
+    - duration: 10
+      arrivalRate: 2
+      name: "Warm up"
+
+    # 正常负载
+    - duration: 30
+      arrivalRate: 10
+      name: "Normal load (10/s)"
+
+    # 高峰负载
+    - duration: 20
+      arrivalRate: 20
+      name: "Peak load (20/s)"
+
+    # 冷却
+    - duration: 10
+      arrivalRate: 2
+      name: "Cool down"
+
+  payload:
+    path: "./tokens.csv"
+    fields:
+      - "account"
+      - "userId"
+      - "token"
+      - "friendId"
+    order: random
+
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+  plugins:
+    metrics-by-endpoint: {}
+
+scenarios:
+  # 场景1: 登录接口测试
+  - name: "登录接口"
+    weight: 3
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            account: "{{ account }}"
+            password: "password123"
+          capture:
+            - json: "$.data.token"
+              as: "authToken"
+          expect:
+            - statusCode: 200
+
+      # 使用 token 获取用户信息
+      - get:
+          url: "/api/user/profile"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+
+  # 场景2: 好友列表查询
+  - name: "好友列表"
+    weight: 4
+    flow:
+      - get:
+          url: "/api/friends"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+
+  # 场景3: 会话列表查询
+  - name: "会话列表"
+    weight: 4
+    flow:
+      - get:
+          url: "/api/conversations"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+
+  # 场景4: 搜索用户
+  - name: "搜索用户"
+    weight: 2
+    flow:
+      - get:
+          url: "/api/user/search?keyword=test"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+
+  # 场景5: 综合搜索
+  - name: "综合搜索"
+    weight: 2
+    flow:
+      - get:
+          url: "/api/conversations/search/all?keyword=test"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+
+  # 场景6: 群组列表
+  - name: "群组列表"
+    weight: 2
+    flow:
+      - get:
+          url: "/api/groups"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+
+  # 场景7: 完整用户流程
+  - name: "完整用户流程"
+    weight: 1
+    flow:
+      # 登录
+      - post:
+          url: "/api/auth/login"
+          json:
+            account: "{{ account }}"
+            password: "password123"
+          capture:
+            - json: "$.data.token"
+              as: "authToken"
+
+      - think: 1
+
+      # 获取好友列表
+      - get:
+          url: "/api/friends"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+
+      # 获取会话列表
+      - get:
+          url: "/api/conversations"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+
+      # 获取群列表
+      - get:
+          url: "/api/groups"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+
+      - think: 2
+
+      # 搜索
+      - get:
+          url: "/api/conversations/search/all?keyword=测试"
+          headers:
+            Authorization: "Bearer {{ authToken }}"

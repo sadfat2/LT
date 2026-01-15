@@ -1,0 +1,106 @@
+# Artillery Socket.IO 消息发送测试
+#
+# 测试目标：
+# 1. 私聊消息发送性能
+# 2. 消息送达率
+# 3. 发送延迟
+#
+# 用法:
+#   1. 先运行 node generate-tokens.js 生成 token
+#   2. 然后 artillery run message-test.yml
+
+config:
+  target: "https://chat.laoyegong.xyz"
+
+  phases:
+    # 预热阶段
+    - duration: 10
+      arrivalRate: 1
+      name: "Warm up"
+
+    # 正常负载
+    - duration: 30
+      arrivalRate: 2
+      name: "Normal load (2/s)"
+
+    # 增加负载
+    - duration: 20
+      arrivalRate: 4
+      name: "Increased load (4/s)"
+
+    # 冷却
+    - duration: 10
+      arrivalRate: 1
+      name: "Cool down"
+
+  # 从 CSV 读取预生成的 token
+  payload:
+    path: "./tokens.csv"
+    fields:
+      - "account"
+      - "userId"
+      - "token"
+      - "friendId"
+      - "groupId"
+      - "groupConversationId"
+    order: random
+
+  engines:
+    socketio-v3:
+      transports: ["websocket"]
+      reconnection: false
+      timeout: 15000
+
+scenarios:
+  - name: "私聊消息发送"
+    engine: socketio-v3
+    flow:
+      # 使用 connect 动作动态传递 token
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      # 等待连接建立
+      - think: 2
+
+      # 发送多条测试消息
+      - loop:
+        - emit:
+            channel: "send_message"
+            data:
+              receiverId: "{{ friendId }}"
+              type: "text"
+              content: "Artillery 测试 [{{ account }}] {{ $timestamp }}"
+        - think: 1
+        count: 5
+
+      # 保持连接
+      - think: 5
+
+  - name: "输入状态 + 消息"
+    weight: 2
+    engine: socketio-v3
+    flow:
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      - think: 1
+
+      # 模拟真实输入行为
+      - loop:
+        - emit:
+            channel: "typing"
+            data:
+              receiverId: "{{ friendId }}"
+        - think: 2
+        - emit:
+            channel: "send_message"
+            data:
+              receiverId: "{{ friendId }}"
+              type: "text"
+              content: "正在输入后发送 {{ $timestamp }}"
+        - think: 3
+        count: 3
+
+      - think: 3
