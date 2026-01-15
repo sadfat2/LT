@@ -1,0 +1,120 @@
+#======================================
+# Docker Compose 优化配置 - 2核4G 服务器
+# 复制到 /opt/LT/docker-compose.yml
+#======================================
+
+version: '3.8'
+
+services:
+  #--------------------------------------
+  # MySQL 数据库 (优化)
+  #--------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: chat-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:-chat_app}
+      MYSQL_USER: ${DB_USER:-chat_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./chat-app/server/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max_connections=300
+      --innodb_buffer_pool_size=512M
+      --innodb_log_file_size=128M
+      --innodb_flush_log_at_trx_commit=2
+      --innodb_flush_method=O_DIRECT
+      --thread_cache_size=16
+      --table_open_cache=2000
+      --tmp_table_size=64M
+      --max_heap_table_size=64M
+      --query_cache_type=0
+      --performance_schema=OFF
+    networks:
+      - chat-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  #--------------------------------------
+  # Redis 缓存 (优化)
+  #--------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: chat-redis
+    restart: always
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 300
+      --timeout 0
+    networks:
+      - chat-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  #--------------------------------------
+  # Node.js 后端服务 (不使用 Docker，用 PM2)
+  # 如果继续使用 Docker，保留此配置
+  #--------------------------------------
+  # server:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.server
+  #   container_name: chat-server
+  #   restart: always
+  #   ports:
+  #     - "127.0.0.1:3000:3000"
+  #   environment:
+  #     NODE_ENV: production
+  #     DB_HOST: mysql
+  #     DB_PORT: 3306
+  #     DB_USER: ${DB_USER:-chat_user}
+  #     DB_PASSWORD: ${DB_PASSWORD}
+  #     DB_NAME: ${DB_NAME:-chat_app}
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     JWT_SECRET: ${JWT_SECRET}
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.5'
+  #         memory: 1G
+  #   depends_on:
+  #     mysql:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - chat-network
+
+volumes:
+  mysql_data:
+    name: chat-mysql-data
+  redis_data:
+    name: chat-redis-data
+
+networks:
+  chat-network:
+    name: chat-network
+    driver: bridge

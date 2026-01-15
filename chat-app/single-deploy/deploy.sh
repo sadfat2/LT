@@ -633,6 +633,47 @@ configure_nginx() {
     log_info "Nginx 配置完成"
 }
 
+# 应用性能优化 (2核4G 服务器)
+apply_optimizations() {
+    log_step "应用性能优化配置..."
+
+    # 1. 优化数据库连接池 (10 -> 30)
+    local db_config="$CHAT_APP_DIR/server/src/config/database.js"
+    if [ -f "$db_config" ]; then
+        if grep -q "connectionLimit: 10" "$db_config"; then
+            sed -i 's/connectionLimit: 10/connectionLimit: 30/' "$db_config"
+            log_info "数据库连接池: 10 -> 30"
+        fi
+        # 添加队列限制
+        if ! grep -q "queueLimit:" "$db_config"; then
+            sed -i 's/connectionLimit: 30,/connectionLimit: 30,\n  queueLimit: 100,/' "$db_config"
+            log_info "添加队列限制: queueLimit: 100"
+        fi
+    fi
+
+    # 2. 优化 MySQL 配置 (在 docker-compose.yml 中)
+    local compose_file="$DEPLOY_DIR/docker-compose.yml"
+    if [ -f "$compose_file" ]; then
+        # 更新 innodb_buffer_pool_size
+        if grep -q "innodb_buffer_pool_size=256M" "$compose_file"; then
+            sed -i 's/innodb_buffer_pool_size=256M/innodb_buffer_pool_size=512M/' "$compose_file"
+            log_info "MySQL buffer_pool: 256M -> 512M"
+        fi
+        # 更新 max_connections
+        if grep -q "max_connections=200" "$compose_file"; then
+            sed -i 's/max_connections=200/max_connections=300/' "$compose_file"
+            log_info "MySQL max_connections: 200 -> 300"
+        fi
+        # 更新 Redis maxmemory
+        if grep -q "maxmemory 128mb" "$compose_file"; then
+            sed -i 's/maxmemory 128mb/maxmemory 256mb/' "$compose_file"
+            log_info "Redis maxmemory: 128M -> 256M"
+        fi
+    fi
+
+    log_info "性能优化配置完成"
+}
+
 # 健康检查
 health_check() {
     log_step "执行健康检查..."
@@ -743,6 +784,9 @@ init_deploy() {
     # 启动 Docker 服务
     start_docker_services
 
+    # 应用性能优化
+    apply_optimizations
+
     # 配置 Nginx
     configure_nginx
 
@@ -797,6 +841,9 @@ update_deploy() {
 
     # 更新 Docker 服务
     update_docker_services
+
+    # 应用性能优化
+    apply_optimizations
 
     # 运行数据库迁移
     run_migrations
