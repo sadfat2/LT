@@ -17,8 +17,10 @@ COPY chat-app/server/package*.json ./
 # 配置 npm 淘宝镜像（国内加速）
 RUN npm config set registry https://registry.npmmirror.com
 
-# 安装生产依赖
-RUN npm install --omit=dev && npm cache clean --force
+# 安装生产依赖 + PM2（多进程支持）
+RUN npm install --omit=dev && \
+    npm install -g pm2 && \
+    npm cache clean --force
 
 # 复制源代码
 COPY chat-app/server/src ./src
@@ -33,5 +35,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget -q --spider http://localhost:3000/health || exit 1
 
-# 启动命令
-CMD ["node", "src/app.js"]
+# PM2 多进程启动（2核服务器使用2个进程）
+# 使用 pm2-runtime 保持前台运行，适合 Docker
+CMD ["pm2-runtime", "start", "src/app.js", "-i", "2", "--name", "chat-server"]
