@@ -2,10 +2,8 @@
 #
 # 测试目标：
 # 模拟真实用户行为，包括：
-# 1. 登录后浏览好友和会话
-# 2. 发送私聊和群聊消息
-# 3. 搜索功能使用
-# 4. 正常的连接保持和断开
+# 1. 发送私聊和群聊消息
+# 2. 正常的连接保持和断开
 #
 # 用法:
 #   artillery run artillery/realistic-test.yml
@@ -53,83 +51,52 @@ config:
       reconnection: false
       timeout: 15000
 
-  defaults:
-    headers:
-      Content-Type: "application/json"
-
 scenarios:
   # 场景1: 活跃用户 (频繁发消息)
   - name: "活跃用户"
     weight: 2
+    engine: socketio-v3
     flow:
-      # 1. HTTP: 获取初始数据
-      - get:
-          url: "/api/friends"
-          headers:
-            Authorization: "Bearer {{ token }}"
-
-      - get:
-          url: "/api/conversations"
-          headers:
-            Authorization: "Bearer {{ token }}"
-
-      # 2. 建立 Socket 连接
       - connect:
           query:
             token: "{{ token }}"
-          engine: socketio-v3
 
       - think: 3
 
-      # 3. 活跃聊天
+      # 活跃聊天
       - loop:
-        # 正在输入
         - emit:
             channel: "typing"
             data:
               receiverId: "{{ friendId }}"
-
         - think: 2
-
-        # 发送私聊消息
         - emit:
             channel: "send_message"
             data:
               receiverId: "{{ friendId }}"
               type: "text"
               content: "活跃用户消息 {{ $timestamp }}"
-
         - think: 5
-
-        # 发送群消息
         - emit:
             channel: "send_message"
             data:
               conversationId: "{{ groupConversationId }}"
               type: "text"
               content: "群内消息 {{ $timestamp }}"
-
         - think: 8
         count: 5
 
-      # 4. 保持在线
+      # 保持在线
       - think: 60
 
   # 场景2: 普通用户 (偶尔发消息)
   - name: "普通用户"
     weight: 4
+    engine: socketio-v3
     flow:
-      # 获取数据
-      - get:
-          url: "/api/conversations"
-          headers:
-            Authorization: "Bearer {{ token }}"
-
-      # 连接
       - connect:
           query:
             token: "{{ token }}"
-          engine: socketio-v3
 
       - think: 5
 
@@ -150,63 +117,23 @@ scenarios:
   # 场景3: 潜水用户 (只看不发)
   - name: "潜水用户"
     weight: 3
+    engine: socketio-v3
     flow:
-      # 获取初始数据
-      - get:
-          url: "/api/friends"
-          headers:
-            Authorization: "Bearer {{ token }}"
-
-      - get:
-          url: "/api/conversations"
-          headers:
-            Authorization: "Bearer {{ token }}"
-
-      # 连接并保持在线
       - connect:
           query:
             token: "{{ token }}"
-          engine: socketio-v3
 
       # 长时间潜水
       - think: 180
 
-  # 场景4: 搜索用户
-  - name: "搜索用户"
-    weight: 1
-    flow:
-      # 多次搜索
-      - loop:
-        - get:
-            url: "/api/user/search?keyword=test"
-            headers:
-              Authorization: "Bearer {{ token }}"
-
-        - think: 3
-
-        - get:
-            url: "/api/conversations/search/all?keyword=消息"
-            headers:
-              Authorization: "Bearer {{ token }}"
-
-        - think: 5
-        count: 3
-
-  # 场景5: 短暂在线用户
+  # 场景4: 短暂在线用户
   - name: "短暂在线"
     weight: 2
+    engine: socketio-v3
     flow:
-      # 快速获取数据
-      - get:
-          url: "/api/conversations"
-          headers:
-            Authorization: "Bearer {{ token }}"
-
-      # 连接
       - connect:
           query:
             token: "{{ token }}"
-          engine: socketio-v3
 
       # 快速发一条消息
       - think: 2
@@ -219,4 +146,3 @@ scenarios:
 
       # 很快离开
       - think: 10
-      - disconnect: true

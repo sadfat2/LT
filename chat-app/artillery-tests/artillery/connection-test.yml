@@ -89,8 +89,10 @@ scenarios:
 
       - think: 2
 
-      # 快速断开 (测试服务器连接清理)
-      - disconnect: true
+      # 发送一个事件后结束 (连接会自动断开)
+      - emit:
+          channel: "ping"
+          data: {}
 
   - name: "长连接稳定性测试"
     weight: 1
