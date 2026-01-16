@@ -9,6 +9,12 @@ export class H5Recorder {
   private startTime: number = 0
   private isRecording: boolean = false
 
+  // 音频增益相关
+  private audioContext: AudioContext | null = null
+  private gainNode: GainNode | null = null
+  private processedStream: MediaStream | null = null
+  private readonly GAIN_VALUE = 2.5  // 增益倍数（1.0=原音量，2.5=放大2.5倍）
+
   /**
    * 检查浏览器是否支持录音
    */
@@ -40,7 +46,17 @@ export class H5Recorder {
    */
   async requestPermission(): Promise<boolean> {
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // 配置音频约束，启用自动增益和降噪
+      const audioConstraints: MediaTrackConstraints = {
+        echoCancellation: true,      // 回声消除
+        noiseSuppression: true,      // 降噪
+        autoGainControl: true,       // 自动增益控制（关键：自动调整音量）
+        channelCount: 1,             // 单声道
+        sampleRate: 48000,           // 采样率
+      }
+
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
+      console.log('[H5Recorder] 麦克风权限获取成功，音频轨道设置:', this.stream.getAudioTracks()[0]?.getSettings())
       return true
     } catch (error) {
       console.error('麦克风权限获取失败:', error)
@@ -83,10 +99,39 @@ export class H5Recorder {
       const mimeType = this.getSupportedMimeType()
       console.log('[H5Recorder] 创建 MediaRecorder, mimeType:', mimeType)
 
+      // 使用 AudioContext + GainNode 放大音量
+      let recordStream = this.stream!
+      try {
+        // 创建 AudioContext
+        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+
+        // 创建音频源
+        const source = this.audioContext.createMediaStreamSource(this.stream!)
+
+        // 创建增益节点
+        this.gainNode = this.audioContext.createGain()
+        this.gainNode.gain.value = this.GAIN_VALUE  // 放大音量
+
+        // 创建输出目标
+        const destination = this.audioContext.createMediaStreamDestination()
+
+        // 连接: 源 -> 增益 -> 目标
+        source.connect(this.gainNode)
+        this.gainNode.connect(destination)
+
+        // 使用处理后的流
+        this.processedStream = destination.stream
+        recordStream = this.processedStream
+
+        console.log('[H5Recorder] 音频增益已启用, 增益倍数:', this.GAIN_VALUE)
+      } catch (err) {
+        console.warn('[H5Recorder] 音频增益创建失败，使用原始流:', err)
+      }
+
       // 每次创建新的 MediaRecorder 避免状态残留
-      this.mediaRecorder = new MediaRecorder(this.stream!, {
+      this.mediaRecorder = new MediaRecorder(recordStream, {
         mimeType,
-        audioBitsPerSecond: 128000
+        audioBitsPerSecond: 192000  // 提高比特率，音质更好
       })
 
       this.mediaRecorder.ondataavailable = (event) => {
@@ -171,6 +216,18 @@ export class H5Recorder {
    */
   destroy(): void {
     this.cancel()
+
+    // 清理音频增益相关资源
+    if (this.audioContext) {
+      this.audioContext.close().catch(() => {})
+      this.audioContext = null
+    }
+    this.gainNode = null
+    if (this.processedStream) {
+      this.processedStream.getTracks().forEach(track => track.stop())
+      this.processedStream = null
+    }
+
     if (this.stream) {
       this.stream.getTracks().forEach(track => track.stop())
       this.stream = null
