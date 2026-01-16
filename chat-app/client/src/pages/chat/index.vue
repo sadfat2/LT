@@ -389,6 +389,9 @@ onMounted(async () => {
   h5Audio.onended = () => {
     playingId.value = null
   }
+  h5Audio.onerror = () => {
+    playingId.value = null
+  }
   // #endif
 
   // 初始化通话事件监听
@@ -623,6 +626,14 @@ const onInput = () => {
 }
 
 const toggleVoice = async () => {
+  // 如果当前是语音模式，切换回键盘模式
+  if (showVoice.value) {
+    showVoice.value = false
+    showMore.value = false
+    return
+  }
+
+  // 切换到语音模式，先请求麦克风权限
   // #ifdef H5
   // H5 平台使用 MediaRecorder API
   if (!H5Recorder.isSupported()) {
@@ -632,8 +643,15 @@ const toggleVoice = async () => {
   if (!h5Recorder) {
     h5Recorder = new H5Recorder()
   }
+  // 请求麦克风权限
+  const hasPermission = await h5Recorder.requestPermission()
+  if (!hasPermission) {
+    uni.showToast({ title: '请允许使用麦克风', icon: 'none' })
+    return
+  }
   // #endif
-  showVoice.value = !showVoice.value
+
+  showVoice.value = true
   showMore.value = false
 }
 
@@ -677,13 +695,23 @@ const startVoiceCall = async () => {
 
 const startRecord = async () => {
   // #ifdef H5
-  if (!h5Recorder) {
-    h5Recorder = new H5Recorder()
+  // 录音前先停止正在播放的音频
+  if (h5Audio && playingId.value) {
+    h5Audio.pause()
+    h5Audio.currentTime = 0
+    playingId.value = null
+    // 停止播放后标记需要刷新 stream
+    h5Recorder?.markNeedRefresh()
   }
-  const hasPermission = await h5Recorder.requestPermission()
-  if (!hasPermission) {
-    uni.showToast({ title: '请允许使用麦克风', icon: 'none' })
-    return
+
+  if (!h5Recorder) {
+    // 正常情况下不会进入这里，因为 toggleVoice 已经初始化了
+    h5Recorder = new H5Recorder()
+    const hasPermission = await h5Recorder.requestPermission()
+    if (!hasPermission) {
+      uni.showToast({ title: '请允许使用麦克风', icon: 'none' })
+      return
+    }
   }
   const started = await h5Recorder.start()
   if (started) {
@@ -693,6 +721,11 @@ const startRecord = async () => {
   // #endif
 
   // #ifndef H5
+  // 非 H5 平台也停止播放
+  if (innerAudioContext && playingId.value) {
+    innerAudioContext.stop()
+    playingId.value = null
+  }
   recording.value = true
   recorderManager?.start({
     duration: 60000,
@@ -1305,21 +1338,53 @@ const formatDuration = (seconds: number): string => {
 }
 
 const playVoice = (message: Message) => {
-  if (!message.media_url) return
+  console.log('[playVoice] 尝试播放:', message.id, 'media_url:', message.media_url)
+  if (!message.media_url) {
+    console.log('[playVoice] media_url 为空，跳过')
+    return
+  }
 
   // #ifdef H5
   // H5 平台使用 HTML5 Audio
   if (playingId.value === message.id) {
+    // 点击正在播放的消息，停止播放
+    console.log('[playVoice] 停止当前播放')
     h5Audio?.pause()
     if (h5Audio) h5Audio.currentTime = 0
     playingId.value = null
+    // 标记录音器需要刷新 stream
+    h5Recorder?.markNeedRefresh()
   } else {
     if (h5Audio) {
+      // 先停止当前播放
+      h5Audio.pause()
+      h5Audio.currentTime = 0
+      // 创建新的 Audio 实例避免状态问题
+      h5Audio = new Audio()
+      h5Audio.onended = () => {
+        console.log('[playVoice] 播放结束')
+        playingId.value = null
+        // 播放结束后标记录音器需要刷新 stream
+        h5Recorder?.markNeedRefresh()
+      }
+      h5Audio.onerror = (e) => {
+        console.error('[playVoice] 播放错误:', e)
+        playingId.value = null
+        // 播放出错也标记需要刷新
+        h5Recorder?.markNeedRefresh()
+      }
+      // 设置新的音频源并播放
+      console.log('[playVoice] 设置音频源:', message.media_url)
       h5Audio.src = message.media_url
-      h5Audio.play().catch(() => {
+      h5Audio.play().then(() => {
+        console.log('[playVoice] 播放开始成功')
+        playingId.value = message.id
+      }).catch((err) => {
+        console.error('[playVoice] 播放失败:', err)
+        playingId.value = null
+        h5Recorder?.markNeedRefresh()
         uni.showToast({ title: '播放失败', icon: 'none' })
       })
-      playingId.value = message.id
     }
   }
   return
