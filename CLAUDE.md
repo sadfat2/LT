@@ -276,9 +276,11 @@ npm run build           # 构建生产版本
 
 ### H5 平台
 - 语音录制使用 MediaRecorder API (`client/src/utils/h5Recorder.ts`)
-- 语音播放使用 HTML5 Audio API
+- 语音播放使用 Web Audio API（AudioContext）
 - 文件选择使用 `<input type="file">`
 - 视频预览通过 `window.open()` 新窗口打开
+
+> **技术说明**：语音播放采用 AudioContext 而非 HTML5 Audio，是为了避免与 MediaRecorder 的音频管道冲突。使用 HTML5 Audio 播放音频后会影响 MediaStream 的内部状态，导致后续录音失败。AudioContext 使用独立的音频管道，播放和录音互不干扰。
 
 ### App/小程序平台
 - 语音录制使用 `uni.getRecorderManager()`

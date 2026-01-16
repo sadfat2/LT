@@ -8,7 +8,6 @@ export class H5Recorder {
   private stream: MediaStream | null = null
   private startTime: number = 0
   private isRecording: boolean = false
-  private needRefreshStream: boolean = false // 标记是否需要刷新 stream
 
   /**
    * 检查浏览器是否支持录音
@@ -50,14 +49,6 @@ export class H5Recorder {
   }
 
   /**
-   * 标记需要刷新 stream（在播放音频后调用）
-   */
-  markNeedRefresh(): void {
-    this.needRefreshStream = true
-    console.log('[H5Recorder] 标记需要刷新 stream')
-  }
-
-  /**
    * 开始录音
    */
   async start(): Promise<boolean> {
@@ -67,12 +58,12 @@ export class H5Recorder {
     }
 
     try {
-      // 检查 stream 是否有效，或者是否被标记需要刷新
+      // 检查 stream 是否有效
       const isStreamValid = this.stream && this.stream.active &&
         this.stream.getTracks().some(track => track.readyState === 'live')
 
-      if (!isStreamValid || this.needRefreshStream) {
-        console.log('[H5Recorder] stream 无效或需要刷新，重新获取')
+      if (!isStreamValid) {
+        console.log('[H5Recorder] stream 无效，重新获取')
         // 清理旧的 stream
         if (this.stream) {
           this.stream.getTracks().forEach(track => track.stop())
@@ -82,7 +73,6 @@ export class H5Recorder {
         if (!hasPermission) {
           return false
         }
-        this.needRefreshStream = false
       } else {
         console.log('[H5Recorder] 复用现有 stream')
       }

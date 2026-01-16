@@ -153,6 +153,23 @@ function onSocketError(context, ee, next) {
   return next();
 }
 
+/**
+ * 多人向一人测试：生成唯一测试标记
+ */
+function generateTestMarker(requestParams, context, ee, next) {
+  context.vars.testId = `multi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return next();
+}
+
+/**
+ * 多人向一人测试：记录发送的消息
+ */
+function logMultiToOneMessage(requestParams, context, ee, next) {
+  ee.emit('counter', 'multi_to_one.message_sent', 1);
+  console.log(`[multi-to-one] ${context.vars.account} -> userId:39`);
+  return next();
+}
+
 module.exports = {
   generateMessageId,
   generateRandomMessage,
@@ -165,4 +182,6 @@ module.exports = {
   setAuthHeader,
   onSocketConnected,
   onSocketError,
+  generateTestMarker,
+  logMultiToOneMessage,
 };

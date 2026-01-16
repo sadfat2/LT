@@ -307,8 +307,9 @@ const currentUser = computed(() => userStore.user)
 let typingTimer: number | null = null
 let innerAudioContext: UniApp.InnerAudioContext | null = null
 let recorderManager: UniApp.RecorderManager | null = null
-// H5 平台使用 HTML5 Audio
-let h5Audio: HTMLAudioElement | null = null
+// H5 平台使用 Web Audio API 播放（避免与 MediaRecorder 冲突）
+let audioContext: AudioContext | null = null
+let audioSource: AudioBufferSourceNode | null = null
 // H5 平台录音器
 let h5Recorder: H5Recorder | null = null
 
@@ -384,14 +385,7 @@ onMounted(async () => {
   // #endif
 
   // #ifdef H5
-  // H5 平台使用 HTML5 Audio
-  h5Audio = new Audio()
-  h5Audio.onended = () => {
-    playingId.value = null
-  }
-  h5Audio.onerror = () => {
-    playingId.value = null
-  }
+  // H5 平台使用 Web Audio API（AudioContext 会在首次播放时初始化）
   // #endif
 
   // 初始化通话事件监听
@@ -414,10 +408,13 @@ onUnmounted(() => {
   // #endif
 
   // #ifdef H5
-  if (h5Audio) {
-    h5Audio.pause()
-    h5Audio.src = ''
-    h5Audio = null
+  if (audioSource) {
+    try { audioSource.stop() } catch (e) { /* ignore */ }
+    audioSource = null
+  }
+  if (audioContext) {
+    audioContext.close()
+    audioContext = null
   }
   // #endif
 })
@@ -695,13 +692,11 @@ const startVoiceCall = async () => {
 
 const startRecord = async () => {
   // #ifdef H5
-  // 录音前先停止正在播放的音频
-  if (h5Audio && playingId.value) {
-    h5Audio.pause()
-    h5Audio.currentTime = 0
+  // 录音前先停止正在播放的音频（使用 Web Audio API）
+  if (audioSource && playingId.value) {
+    try { audioSource.stop() } catch (e) { /* ignore */ }
+    audioSource = null
     playingId.value = null
-    // 停止播放后标记需要刷新 stream
-    h5Recorder?.markNeedRefresh()
   }
 
   if (!h5Recorder) {
@@ -1337,7 +1332,7 @@ const formatDuration = (seconds: number): string => {
   return `${mins}:${String(secs).padStart(2, '0')}`
 }
 
-const playVoice = (message: Message) => {
+const playVoice = async (message: Message) => {
   console.log('[playVoice] 尝试播放:', message.id, 'media_url:', message.media_url)
   if (!message.media_url) {
     console.log('[playVoice] media_url 为空，跳过')
@@ -1345,47 +1340,74 @@ const playVoice = (message: Message) => {
   }
 
   // #ifdef H5
-  // H5 平台使用 HTML5 Audio
+  // H5 平台使用 Web Audio API（避免与 MediaRecorder 冲突）
   if (playingId.value === message.id) {
     // 点击正在播放的消息，停止播放
     console.log('[playVoice] 停止当前播放')
-    h5Audio?.pause()
-    if (h5Audio) h5Audio.currentTime = 0
-    playingId.value = null
-    // 标记录音器需要刷新 stream
-    h5Recorder?.markNeedRefresh()
-  } else {
-    if (h5Audio) {
-      // 先停止当前播放
-      h5Audio.pause()
-      h5Audio.currentTime = 0
-      // 创建新的 Audio 实例避免状态问题
-      h5Audio = new Audio()
-      h5Audio.onended = () => {
-        console.log('[playVoice] 播放结束')
-        playingId.value = null
-        // 播放结束后标记录音器需要刷新 stream
-        h5Recorder?.markNeedRefresh()
-      }
-      h5Audio.onerror = (e) => {
-        console.error('[playVoice] 播放错误:', e)
-        playingId.value = null
-        // 播放出错也标记需要刷新
-        h5Recorder?.markNeedRefresh()
-      }
-      // 设置新的音频源并播放
-      console.log('[playVoice] 设置音频源:', message.media_url)
-      h5Audio.src = message.media_url
-      h5Audio.play().then(() => {
-        console.log('[playVoice] 播放开始成功')
-        playingId.value = message.id
-      }).catch((err) => {
-        console.error('[playVoice] 播放失败:', err)
-        playingId.value = null
-        h5Recorder?.markNeedRefresh()
-        uni.showToast({ title: '播放失败', icon: 'none' })
-      })
+    if (audioSource) {
+      try { audioSource.stop() } catch (e) { /* ignore */ }
+      audioSource = null
     }
+    playingId.value = null
+    return
+  }
+
+  // 停止当前正在播放的音频
+  if (audioSource) {
+    try { audioSource.stop() } catch (e) { /* ignore */ }
+    audioSource = null
+  }
+
+  try {
+    // 初始化 AudioContext（需要用户交互后才能创建）
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    }
+
+    // 如果 AudioContext 被挂起（浏览器自动暂停），恢复它
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume()
+    }
+
+    console.log('[playVoice] 开始加载音频:', message.media_url)
+    playingId.value = message.id // 先设置播放状态显示加载中
+
+    // 获取音频数据
+    const response = await fetch(message.media_url)
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+    const arrayBuffer = await response.arrayBuffer()
+
+    // 解码音频数据
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+
+    // 检查是否仍然是当前要播放的消息（用户可能已经切换）
+    if (playingId.value !== message.id) {
+      console.log('[playVoice] 用户已切换，取消播放')
+      return
+    }
+
+    // 创建音频源并播放
+    audioSource = audioContext.createBufferSource()
+    audioSource.buffer = audioBuffer
+    audioSource.connect(audioContext.destination)
+
+    audioSource.onended = () => {
+      console.log('[playVoice] 播放结束')
+      if (playingId.value === message.id) {
+        playingId.value = null
+      }
+      audioSource = null
+    }
+
+    audioSource.start()
+    console.log('[playVoice] 播放开始成功')
+  } catch (error) {
+    console.error('[playVoice] 播放失败:', error)
+    playingId.value = null
+    audioSource = null
+    uni.showToast({ title: '播放失败', icon: 'none' })
   }
   return
   // #endif

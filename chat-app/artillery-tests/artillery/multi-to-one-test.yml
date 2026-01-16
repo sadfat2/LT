@@ -1,0 +1,104 @@
+# Artillery 多人向一人私聊测试
+#
+# 测试目标：
+# 1. 验证多人同时向一人发送私聊消息时的竞态条件修复
+# 2. 检查消息是否正确送达
+# 3. 检查会话是否正确创建（不重复）
+# 4. 检查消息记录是否完整保存
+#
+# 用法:
+#   1. 先运行 npm run generate-tokens 生成 token
+#   2. 然后 npm run test:multi-to-one
+#
+# 验证方式:
+#   测试完成后执行以下 SQL 验证:
+#   - 消息数量: SELECT COUNT(*) FROM messages WHERE content LIKE '%multi-to-one%' AND created_at > NOW() - INTERVAL 10 MINUTE;
+#   - 重复会话检查: 详见 README.md
+
+config:
+  target: "https://chat.laoyegong.xyz"
+
+  phases:
+    # 阶段1：高并发冲击 - 模拟多人同时发起聊天
+    - duration: 5
+      arrivalRate: 10
+      name: "高并发冲击 (10/s)"
+
+    # 阶段2：持续压力
+    - duration: 20
+      arrivalRate: 5
+      name: "持续压力 (5/s)"
+
+    # 阶段3：冷却
+    - duration: 5
+      arrivalRate: 1
+      name: "冷却"
+
+  # 从 CSV 读取预生成的 token
+  payload:
+    path: "./tokens.csv"
+    fields:
+      - "account"
+      - "userId"
+      - "token"
+      - "friendId"
+      - "groupId"
+      - "groupConversationId"
+    order: random
+
+  engines:
+    socketio-v3:
+      transports: ["websocket"]
+      reconnection: false
+      timeout: 15000
+
+  processor: "./processor.js"
+
+scenarios:
+  - name: "多人向一人私聊 (目标: testuser1)"
+    engine: socketio-v3
+    flow:
+      # 使用 connect 动作动态传递 token
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      # 等待连接建立
+      - think: 1
+
+      # 发送多条测试消息到固定目标用户 (testuser1, userId: 39)
+      - loop:
+        - emit:
+            channel: "send_message"
+            data:
+              receiverId: 39
+              type: "text"
+              content: "[multi-to-one] 来自 {{ account }} (userId:{{ userId }}) 的第 {{ $loopCount }} 条消息 {{ $timestamp }}"
+        - think: 0.5
+        count: 5
+
+      # 保持连接一段时间
+      - think: 3
+
+  - name: "高频发送 (极端测试)"
+    weight: 1
+    engine: socketio-v3
+    flow:
+      - connect:
+          query:
+            token: "{{ token }}"
+
+      - think: 0.5
+
+      # 快速连续发送 - 测试极端并发
+      - loop:
+        - emit:
+            channel: "send_message"
+            data:
+              receiverId: 39
+              type: "text"
+              content: "[multi-to-one-rapid] {{ account }} 快速消息 {{ $loopCount }} {{ $timestamp }}"
+        - think: 0.1
+        count: 10
+
+      - think: 2

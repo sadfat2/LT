@@ -12,6 +12,7 @@
 | REST API | `api-test.yml` | HTTP API 接口性能 |
 | 压力测试 | `stress-test.yml` | 高并发极限测试 |
 | 真实场景 | `realistic-test.yml` | 模拟真实用户行为 |
+| 多人向一人 | `multi-to-one-test.yml` | 多人同时向一人私聊（竞态测试）|
 
 ## 快速开始
 
@@ -60,6 +61,7 @@ npm run test:group        # 群聊测试
 npm run test:api          # API 测试
 npm run test:stress       # 压力测试（谨慎使用）
 npm run test:realistic    # 真实场景测试
+npm run test:multi-to-one # 多人向一人测试（竞态测试）
 ```
 
 ## 目录结构
@@ -76,6 +78,7 @@ artillery-tests/
 │   ├── api-test.yml          # REST API 测试
 │   ├── stress-test.yml       # 压力测试
 │   ├── realistic-test.yml    # 真实场景测试
+│   ├── multi-to-one-test.yml # 多人向一人测试（竞态测试）
 │   ├── tokens.csv            # 生成的 token (git ignored)
 │   └── tokens.json           # 生成的 token (git ignored)
 ├── setup/
@@ -141,6 +144,42 @@ artillery-tests/
 - **普通用户** (40%): 偶尔发消息
 - **潜水用户** (30%): 只看不发
 - **搜索用户** (10%): 主要使用搜索功能
+
+### 多人向一人测试 (multi-to-one-test.yml)
+
+**用途**：验证多人同时向一人发送私聊消息时的竞态条件修复
+
+| 阶段 | 持续时间 | 到达率 |
+|------|----------|--------|
+| 高并发冲击 | 5秒 | 10/秒 |
+| 持续压力 | 20秒 | 5/秒 |
+| 冷却 | 5秒 | 1/秒 |
+
+**测试目标**：
+- 所有测试用户同时向 testuser1 (userId: 39) 发送消息
+- 检查消息是否正确送达
+- 检查会话是否正确创建（不重复）
+- 检查消息记录是否完整保存
+
+**验证方法**：
+```bash
+# 运行测试
+npm run test:multi-to-one
+
+# 验证消息数量（在服务器上执行，密码替换为实际密码）
+docker exec chat-mysql mysql -uroot -p<密码> chat_app -e \
+  "SELECT COUNT(*) as msg_count FROM messages WHERE content LIKE '%multi-to-one%' AND created_at > NOW() - INTERVAL 10 MINUTE;"
+
+# 检查是否有重复会话（预期结果应为空）
+docker exec chat-mysql mysql -uroot -p<密码> chat_app -e \
+  "SELECT cp1.user_id as user1, cp2.user_id as user2, COUNT(*) as conv_count
+   FROM conversation_participants cp1
+   JOIN conversation_participants cp2 ON cp1.conversation_id = cp2.conversation_id AND cp1.user_id < cp2.user_id
+   JOIN conversations c ON cp1.conversation_id = c.id
+   WHERE c.type = 'private' AND (cp1.user_id = 39 OR cp2.user_id = 39)
+   GROUP BY cp1.user_id, cp2.user_id
+   HAVING conv_count > 1;"
+```
 
 ## 环境变量
 

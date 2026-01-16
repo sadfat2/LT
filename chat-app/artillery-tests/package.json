@@ -10,6 +10,7 @@
     "test:api": "npx artillery run artillery/api-test.yml",
     "test:stress": "npx artillery run artillery/stress-test.yml",
     "test:realistic": "npx artillery run artillery/realistic-test.yml",
+    "test:multi-to-one": "npx artillery run artillery/multi-to-one-test.yml",
     "test:quick": "npm run generate-tokens && npm run test:message",
     "test:full": "npm run generate-tokens && npm run test:connection && npm run test:message && npm run test:group && npm run test:api",
     "test": "npm run test:quick",
