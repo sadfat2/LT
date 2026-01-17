@@ -2,12 +2,17 @@
 import { onLaunch, onShow, onHide } from '@dcloudio/uni-app'
 import { useUserStore } from './store/user'
 import { useSocketStore } from './store/socket'
+import { useCallStore } from './store/call'
 
 onLaunch(() => {
   console.log('App Launch')
   // 检查登录状态
   const userStore = useUserStore()
   userStore.checkAuth()
+
+  // 初始化通话事件监听（全局只初始化一次）
+  const callStore = useCallStore()
+  callStore.initCallListeners()
 })
 
 onShow(() => {

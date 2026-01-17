@@ -16,6 +16,9 @@ export interface PeerInfo {
 // 通话结束原因
 export type CallEndReason = 'hangup' | 'rejected' | 'timeout' | 'cancelled' | 'busy' | 'offline' | 'error' | 'disconnected'
 
+// 监听器初始化标志（防止重复绑定）
+let listenersInitialized = false
+
 export const useCallStore = defineStore('call', () => {
   // 状态
   const status = ref<CallStatus>('idle')
@@ -33,6 +36,9 @@ export const useCallStore = defineStore('call', () => {
   let webrtcManager: WebRTCManager | null = null
   let durationTimer: ReturnType<typeof setInterval> | null = null
   let statsTimer: ReturnType<typeof setInterval> | null = null  // 音频统计定时器
+
+  // 操作锁，防止快速重复点击
+  let isProcessing = false
 
   // 音频元素（用于播放远程音频）
   let remoteAudio: HTMLAudioElement | null = null
@@ -54,6 +60,14 @@ export const useCallStore = defineStore('call', () => {
    * 应在 App.vue 或全局位置调用
    */
   const initCallListeners = () => {
+    // 防止重复初始化
+    if (listenersInitialized) {
+      console.log('[Call] 监听器已初始化，跳过重复注册')
+      return
+    }
+    listenersInitialized = true
+    console.log('[Call] 初始化通话事件监听器')
+
     // 收到来电
     socketStore.on('call:incoming', handleIncomingCall)
     // 对方接听
@@ -76,6 +90,12 @@ export const useCallStore = defineStore('call', () => {
    * 移除通话事件监听
    */
   const removeCallListeners = () => {
+    if (!listenersInitialized) {
+      return
+    }
+    listenersInitialized = false
+    console.log('[Call] 移除通话事件监听器')
+
     socketStore.off('call:incoming', handleIncomingCall)
     socketStore.off('call:accepted', handleCallAccepted)
     socketStore.off('call:rejected', handleCallRejected)
@@ -158,9 +178,22 @@ export const useCallStore = defineStore('call', () => {
    * 接听来电
    */
   const acceptCall = async (): Promise<boolean> => {
-    if (status.value !== 'ringing' || !callId.value) {
+    console.log('[Call] 尝试接听，当前状态:', status.value, 'callId:', callId.value, 'isProcessing:', isProcessing)
+
+    // 防止重复操作
+    if (isProcessing) {
+      console.log('[Call] 接听失败：正在处理中')
       return false
     }
+
+    if (status.value !== 'ringing' || !callId.value) {
+      console.log('[Call] 接听失败：状态不正确')
+      return false
+    }
+
+    // 立即加锁并更新状态，防止重复点击
+    isProcessing = true
+    status.value = 'connecting'
 
     try {
       // 初始化 WebRTC
@@ -180,20 +213,24 @@ export const useCallStore = defineStore('call', () => {
       // 发送接听消息
       return new Promise((resolve) => {
         socketStore.socket?.emit('call:accept', { callId: callId.value }, (result: any) => {
+          isProcessing = false  // 释放锁
           if (result.success) {
-            status.value = 'connecting'
+            // 状态已经在前面设置为 connecting
             resolve(true)
           } else {
             webrtcManager?.close()
             webrtcManager = null
+            resetCallState()  // 失败时重置状态
             uni.showToast({ title: result.error || '接听失败', icon: 'none' })
             resolve(false)
           }
         })
       })
     } catch (error) {
+      isProcessing = false  // 释放锁
       webrtcManager?.close()
       webrtcManager = null
+      resetCallState()  // 失败时重置状态
 
       const err = error as Error
       uni.showToast({ title: err.message || '接听失败', icon: 'none' })
@@ -205,14 +242,31 @@ export const useCallStore = defineStore('call', () => {
    * 拒绝来电
    */
   const rejectCall = (): void => {
-    if (status.value !== 'ringing' || !callId.value) return
+    console.log('[Call] 尝试拒绝，当前状态:', status.value, 'callId:', callId.value, 'isProcessing:', isProcessing)
+
+    // 防止重复操作
+    if (isProcessing) {
+      console.log('[Call] 拒绝失败：正在处理中')
+      return
+    }
+
+    if (status.value !== 'ringing' || !callId.value) {
+      console.log('[Call] 拒绝失败：状态不正确')
+      return
+    }
+
+    // 立即加锁，防止重复点击
+    isProcessing = true
+    const currentCallId = callId.value
+
+    // 先重置状态，防止后续操作
+    resetCallState()
+    isProcessing = false  // resetCallState 后释放锁
 
     socketStore.socket?.emit('call:reject', {
-      callId: callId.value,
+      callId: currentCallId,
       reason: 'declined'
     })
-
-    resetCallState()
   }
 
   /**
@@ -268,8 +322,28 @@ export const useCallStore = defineStore('call', () => {
    * 处理来电
    */
   const handleIncomingCall = (data: { callId: string; callerId: number; callerInfo: PeerInfo }) => {
-    // 如果正在通话中，自动拒绝
-    if (isInCall.value) {
+    console.log('[Call] 收到来电:', data.callId, '当前状态:', status.value)
+
+    // 只有在"真正通话中"时才拒绝（connecting/connected 表示已建立连接）
+    // calling/ringing 状态不应该自动拒绝，因为可能是重复事件或竞态条件
+    if (['connecting', 'connected'].includes(status.value)) {
+      console.log('[Call] 正在通话中，自动拒绝来电')
+      socketStore.socket?.emit('call:reject', {
+        callId: data.callId,
+        reason: 'busy'
+      })
+      return
+    }
+
+    // 如果已经在 ringing 或 calling 状态，说明可能是重复事件，忽略
+    if (['calling', 'ringing'].includes(status.value)) {
+      // 检查是否是同一个通话的重复事件
+      if (callId.value === data.callId) {
+        console.log('[Call] 忽略同一通话的重复来电事件')
+        return
+      }
+      // 不同通话，拒绝新来电（用户正在处理另一个通话）
+      console.log('[Call] 正在处理另一个通话，拒绝新来电')
       socketStore.socket?.emit('call:reject', {
         callId: data.callId,
         reason: 'busy'
@@ -284,13 +358,18 @@ export const useCallStore = defineStore('call', () => {
     peerInfo.value = data.callerInfo
     isCaller.value = false
     endReason.value = null
+    console.log('[Call] 来电状态已更新: ringing')
   }
 
   /**
    * 处理对方接听
    */
   const handleCallAccepted = async (data: { callId: string; receiverInfo: PeerInfo }) => {
-    if (callId.value !== data.callId) return
+    console.log('[Call] 收到对方接听:', data.callId, '当前 callId:', callId.value, '当前状态:', status.value)
+    if (callId.value !== data.callId) {
+      console.log('[Call] callId 不匹配，忽略')
+      return
+    }
 
     try {
       // 初始化 PeerConnection
@@ -321,7 +400,11 @@ export const useCallStore = defineStore('call', () => {
    * 处理对方拒绝
    */
   const handleCallRejected = (data: { callId: string; reason: string }) => {
-    if (callId.value !== data.callId) return
+    console.log('[Call] 收到拒绝:', data.callId, '原因:', data.reason, '当前 callId:', callId.value, '当前状态:', status.value)
+    if (callId.value !== data.callId) {
+      console.log('[Call] callId 不匹配，忽略')
+      return
+    }
 
     webrtcManager?.close()
     webrtcManager = null
@@ -609,6 +692,7 @@ export const useCallStore = defineStore('call', () => {
     isMuted.value = false
     isSpeaker.value = false
     endReason.value = null
+    isProcessing = false  // 重置操作锁
 
     // 清理音频元素
     if (remoteAudio) {

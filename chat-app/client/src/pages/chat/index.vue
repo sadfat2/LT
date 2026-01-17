@@ -388,8 +388,8 @@ onMounted(async () => {
   // H5 平台使用 Web Audio API（AudioContext 会在首次播放时初始化）
   // #endif
 
-  // 初始化通话事件监听
-  callStore.initCallListeners()
+  // 注意：通话事件监听已在 pages/index/index.vue 中全局初始化
+  // 此处不再重复调用 callStore.initCallListeners()，避免监听器重复绑定导致竞态条件
 })
 
 onUnmounted(() => {
@@ -398,8 +398,8 @@ onUnmounted(() => {
   socketStore.off('message_revoked', handleRevoked)
   socketStore.off('user_typing', handleTyping)
 
-  // 移除通话事件监听
-  callStore.removeCallListeners()
+  // 注意：通话事件监听是全局的，不在此处移除
+  // 避免页面切换时意外移除监听器导致通话功能失效
 
   // #ifndef H5
   if (innerAudioContext) {

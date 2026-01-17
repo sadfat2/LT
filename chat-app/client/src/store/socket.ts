@@ -54,11 +54,13 @@ export const useSocketStore = defineStore('socket', () => {
       connected.value = true
 
       // 注册之前挂起的事件监听器
+      // 先移除旧监听器再绑定，防止重连时重复绑定
       pendingListeners.value.forEach((handlers, event) => {
         handlers.forEach(handler => {
-          socket.value?.on(event, handler)
+          socket.value?.off(event, handler)  // 先移除（防止重复）
+          socket.value?.on(event, handler)   // 再绑定
         })
-        console.log(`[Socket] 已注册 ${handlers.size} 个待挂起的 ${event} 监听器`)
+        console.log(`[Socket] 已注册 ${handlers.size} 个 ${event} 监听器`)
       })
     })
 

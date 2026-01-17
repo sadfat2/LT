@@ -97,7 +97,7 @@ npm run build           # 构建生产版本
 - `conversation.ts` - 会话列表、消息记录
 - `friend.ts` - 好友列表、好友申请、好友备注管理
 - `group.ts` - 群组管理、群成员、群消息
-- `call.ts` - 语音通话状态管理、WebRTC 信令处理
+- `call.ts` - 语音通话状态管理、WebRTC 信令处理、操作防抖
 
 ## Socket.io 事件协议
 
@@ -401,6 +401,18 @@ GET /api/conversations/search/all?keyword=搜索关键词
 - 30秒呼叫超时自动取消
 - 用户忙线/离线检测
 - 通话记录自动保存到聊天历史
+
+### 实现细节
+
+通话状态管理位于 `client/src/store/call.ts`，包含以下关键机制：
+
+| 机制 | 说明 |
+|------|------|
+| 监听器防重复 | `listenersInitialized` 标志确保事件监听只注册一次 |
+| 全局初始化 | 监听器在 `App.vue` 的 `onLaunch` 中初始化，支持任意页面刷新 |
+| 操作锁 | `isProcessing` 防止快速重复点击（双击接听/拒绝） |
+| 状态即时更新 | 接听时立即设置 `connecting` 状态，防止重复操作 |
+| 忙线检测优化 | 仅 `connecting`/`connected` 状态视为通话中，`ringing` 状态不自动拒绝 |
 
 ### 通话记录消息
 

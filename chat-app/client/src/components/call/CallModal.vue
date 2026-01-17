@@ -92,11 +92,14 @@ const statusText = computed(() => {
 
 // 接听
 const handleAccept = async () => {
-  await callStore.acceptCall()
+  console.log('[CallModal] 点击接听按钮')
+  const result = await callStore.acceptCall()
+  console.log('[CallModal] 接听结果:', result)
 }
 
 // 拒绝
 const handleReject = () => {
+  console.log('[CallModal] 点击拒绝按钮')
   callStore.rejectCall()
 }
 
