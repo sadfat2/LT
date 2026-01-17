@@ -1,6 +1,8 @@
 /**
  * 语音通话信令处理模块
  * 基于 WebRTC P2P 架构，Socket.io 仅用于信令交换
+ *
+ * 通话状态使用 Redis 存储，支持多进程/多实例部署
  */
 
 const redisClient = require('../config/redis');
@@ -8,8 +10,10 @@ const User = require('../models/User');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 
-// 通话状态管理（内存存储，生产环境可迁移到 Redis）
-const activeCalls = new Map(); // { odeCcallId: { callerId, receiverId, status, startTime } }
+// Redis key 前缀
+const CALL_PREFIX = 'call:';
+const USER_CALL_PREFIX = 'user_call:';
+const CALL_TTL = 120; // 通话记录过期时间（秒）
 
 // 生成唯一通话ID
 const generateCallId = (userId1, userId2) => {
@@ -17,34 +21,93 @@ const generateCallId = (userId1, userId2) => {
   return `call_${sorted[0]}_${sorted[1]}_${Date.now()}`;
 };
 
-// 清理用户的过期通话记录（超过60秒未接通的通话）
-const cleanupStaleCalls = (userId) => {
-  const now = Date.now();
-  const staleTimeout = 60 * 1000; // 60秒
+// 获取通话记录
+const getCall = async (callId) => {
+  try {
+    const key = `${CALL_PREFIX}${callId}`;
+    const data = await redisClient.get(key);
+    console.log(`[Call] Redis GET ${key}:`, data ? '找到' : '未找到');
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    console.error('[Call] Redis 获取通话记录失败:', error);
+    return null;
+  }
+};
 
-  for (const [callId, call] of activeCalls) {
-    if ((call.callerId === userId || call.receiverId === userId)) {
-      // 如果通话创建超过60秒且未接通，清理掉
-      if (!call.connectedTime && (now - call.startTime) > staleTimeout) {
-        console.log(`[Call] 清理过期通话: ${callId}`);
-        activeCalls.delete(callId);
-      }
+// 保存通话记录
+const setCall = async (callId, callData) => {
+  try {
+    const key = `${CALL_PREFIX}${callId}`;
+    console.log(`[Call] Redis SET ${key}:`, JSON.stringify(callData));
+    await redisClient.set(key, JSON.stringify(callData), { EX: CALL_TTL });
+    // 同时记录用户的当前通话ID
+    await redisClient.set(`${USER_CALL_PREFIX}${callData.callerId}`, callId, { EX: CALL_TTL });
+    await redisClient.set(`${USER_CALL_PREFIX}${callData.receiverId}`, callId, { EX: CALL_TTL });
+    console.log(`[Call] Redis 保存成功: ${callId}`);
+    return true;
+  } catch (error) {
+    console.error('[Call] Redis 保存通话记录失败:', error);
+    return false;
+  }
+};
+
+// 更新通话记录
+const updateCall = async (callId, updates) => {
+  try {
+    const call = await getCall(callId);
+    if (!call) return null;
+
+    const updatedCall = { ...call, ...updates };
+    await redisClient.set(
+      `${CALL_PREFIX}${callId}`,
+      JSON.stringify(updatedCall),
+      { EX: CALL_TTL }
+    );
+    return updatedCall;
+  } catch (error) {
+    console.error('[Call] Redis 更新通话记录失败:', error);
+    return null;
+  }
+};
+
+// 删除通话记录
+const deleteCall = async (callId) => {
+  try {
+    const call = await getCall(callId);
+    if (call) {
+      await redisClient.del(`${USER_CALL_PREFIX}${call.callerId}`);
+      await redisClient.del(`${USER_CALL_PREFIX}${call.receiverId}`);
     }
+    await redisClient.del(`${CALL_PREFIX}${callId}`);
+    return true;
+  } catch (error) {
+    console.error('[Call] Redis 删除通话记录失败:', error);
+    return false;
   }
 };
 
 // 检查用户是否在通话中
-const isUserInCall = (userId) => {
-  // 先清理过期的通话记录
-  cleanupStaleCalls(userId);
+const isUserInCall = async (userId) => {
+  try {
+    const callId = await redisClient.get(`${USER_CALL_PREFIX}${userId}`);
+    if (!callId) return { inCall: false };
 
-  for (const [callId, call] of activeCalls) {
-    if ((call.callerId === userId || call.receiverId === userId) &&
-        ['calling', 'ringing', 'connected'].includes(call.status)) {
+    const call = await getCall(callId);
+    if (!call) {
+      // 清理孤立的用户通话记录
+      await redisClient.del(`${USER_CALL_PREFIX}${userId}`);
+      return { inCall: false };
+    }
+
+    if (['calling', 'ringing', 'connected'].includes(call.status)) {
       return { inCall: true, callId, call };
     }
+
+    return { inCall: false };
+  } catch (error) {
+    console.error('[Call] Redis 检查用户通话状态失败:', error);
+    return { inCall: false };
   }
-  return { inCall: false };
 };
 
 /**
@@ -141,13 +204,13 @@ const initCallHandlers = (socket, io) => {
       }
 
       // 检查自己是否在通话中
-      const selfCallStatus = isUserInCall(userId);
+      const selfCallStatus = await isUserInCall(userId);
       if (selfCallStatus.inCall) {
         return callback?.({ success: false, error: '您正在通话中' });
       }
 
       // 检查对方是否在通话中
-      const targetCallStatus = isUserInCall(targetUserId);
+      const targetCallStatus = await isUserInCall(targetUserId);
       if (targetCallStatus.inCall) {
         return callback?.({ success: false, error: '对方正在通话中', code: 'BUSY' });
       }
@@ -164,9 +227,9 @@ const initCallHandlers = (socket, io) => {
         return callback?.({ success: false, error: '用户信息获取失败' });
       }
 
-      // 创建通话记录
+      // 创建通话记录（存储到 Redis）
       const callId = generateCallId(userId, targetUserId);
-      activeCalls.set(callId, {
+      await setCall(callId, {
         callerId: userId,
         receiverId: targetUserId,
         status: 'calling',
@@ -186,9 +249,9 @@ const initCallHandlers = (socket, io) => {
 
       // 设置呼叫超时（30秒无响应自动取消）
       setTimeout(async () => {
-        const call = activeCalls.get(callId);
+        const call = await getCall(callId);
         if (call && call.status === 'calling') {
-          activeCalls.delete(callId);
+          await deleteCall(callId);
           // 通知双方呼叫超时
           io.to(`user_${userId}`).emit('call:timeout', { callId });
           io.to(`user_${targetUserId}`).emit('call:timeout', { callId });
@@ -212,9 +275,11 @@ const initCallHandlers = (socket, io) => {
   socket.on('call:accept', async (data, callback) => {
     try {
       const { callId } = data;
+      console.log(`[Call] 用户 ${userId} 尝试接听通话 ${callId}`);
 
-      const call = activeCalls.get(callId);
+      const call = await getCall(callId);
       if (!call) {
+        console.log(`[Call] 通话 ${callId} 不存在`);
         return callback?.({ success: false, error: '通话不存在或已结束' });
       }
 
@@ -229,9 +294,11 @@ const initCallHandlers = (socket, io) => {
       // 获取接听者信息
       const receiver = await User.findById(userId);
 
-      // 更新通话状态
-      call.status = 'connected';
-      call.connectedTime = Date.now();
+      // 更新通话状态（存储到 Redis）
+      await updateCall(callId, {
+        status: 'connected',
+        connectedTime: Date.now()
+      });
 
       // 通知呼叫者对方已接听
       io.to(`user_${call.callerId}`).emit('call:accepted', {
@@ -243,6 +310,7 @@ const initCallHandlers = (socket, io) => {
         }
       });
 
+      console.log(`[Call] 通话 ${callId} 已接通`);
       callback?.({ success: true });
 
     } catch (error) {
@@ -259,7 +327,7 @@ const initCallHandlers = (socket, io) => {
     try {
       const { callId, reason } = data;
 
-      const call = activeCalls.get(callId);
+      const call = await getCall(callId);
       if (!call) {
         return callback?.({ success: false, error: '通话不存在' });
       }
@@ -268,8 +336,8 @@ const initCallHandlers = (socket, io) => {
         return callback?.({ success: false, error: '无权操作此通话' });
       }
 
-      // 删除通话记录
-      activeCalls.delete(callId);
+      // 删除通话记录（从 Redis）
+      await deleteCall(callId);
 
       // 通知呼叫者被拒绝
       io.to(`user_${call.callerId}`).emit('call:rejected', {
@@ -296,7 +364,7 @@ const initCallHandlers = (socket, io) => {
     try {
       const { callId } = data;
 
-      const call = activeCalls.get(callId);
+      const call = await getCall(callId);
       if (!call) {
         return callback?.({ success: false, error: '通话不存在' });
       }
@@ -311,8 +379,8 @@ const initCallHandlers = (socket, io) => {
         ? Math.floor((Date.now() - call.connectedTime) / 1000)
         : 0;
 
-      // 删除通话记录
-      activeCalls.delete(callId);
+      // 删除通话记录（从 Redis）
+      await deleteCall(callId);
 
       // 通知对方通话结束
       const otherUserId = call.callerId === userId ? call.receiverId : call.callerId;
@@ -343,7 +411,7 @@ const initCallHandlers = (socket, io) => {
     try {
       const { callId } = data;
 
-      const call = activeCalls.get(callId);
+      const call = await getCall(callId);
       if (!call) {
         return callback?.({ success: false, error: '通话不存在' });
       }
@@ -356,8 +424,8 @@ const initCallHandlers = (socket, io) => {
         return callback?.({ success: false, error: '通话已接通，请使用挂断' });
       }
 
-      // 删除通话记录
-      activeCalls.delete(callId);
+      // 删除通话记录（从 Redis）
+      await deleteCall(callId);
 
       // 通知接收者呼叫已取消
       io.to(`user_${call.receiverId}`).emit('call:cancelled', { callId });
@@ -379,9 +447,9 @@ const initCallHandlers = (socket, io) => {
    * 转发 WebRTC Offer
    * data: { callId: string, sdp: RTCSessionDescription }
    */
-  socket.on('webrtc:offer', (data) => {
+  socket.on('webrtc:offer', async (data) => {
     const { callId, sdp } = data;
-    const call = activeCalls.get(callId);
+    const call = await getCall(callId);
 
     if (call && call.callerId === userId) {
       io.to(`user_${call.receiverId}`).emit('webrtc:offer', {
@@ -396,9 +464,9 @@ const initCallHandlers = (socket, io) => {
    * 转发 WebRTC Answer
    * data: { callId: string, sdp: RTCSessionDescription }
    */
-  socket.on('webrtc:answer', (data) => {
+  socket.on('webrtc:answer', async (data) => {
     const { callId, sdp } = data;
-    const call = activeCalls.get(callId);
+    const call = await getCall(callId);
 
     if (call && call.receiverId === userId) {
       io.to(`user_${call.callerId}`).emit('webrtc:answer', {
@@ -413,9 +481,9 @@ const initCallHandlers = (socket, io) => {
    * 转发 ICE Candidate
    * data: { callId: string, candidate: RTCIceCandidate }
    */
-  socket.on('webrtc:ice', (data) => {
+  socket.on('webrtc:ice', async (data) => {
     const { callId, candidate } = data;
-    const call = activeCalls.get(callId);
+    const call = await getCall(callId);
 
     if (call) {
       const targetId = call.callerId === userId ? call.receiverId : call.callerId;
@@ -429,9 +497,9 @@ const initCallHandlers = (socket, io) => {
 
   // ==================== 断开连接处理 ====================
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     // 检查用户是否在通话中
-    const callStatus = isUserInCall(userId);
+    const callStatus = await isUserInCall(userId);
     if (callStatus.inCall) {
       const { callId, call } = callStatus;
 
@@ -440,8 +508,8 @@ const initCallHandlers = (socket, io) => {
         ? Math.floor((Date.now() - call.connectedTime) / 1000)
         : 0;
 
-      // 删除通话记录
-      activeCalls.delete(callId);
+      // 删除通话记录（从 Redis）
+      await deleteCall(callId);
 
       // 通知对方通话结束
       const otherUserId = call.callerId === userId ? call.receiverId : call.callerId;
