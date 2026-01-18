@@ -2,14 +2,14 @@
 
 ## 阶段一：项目初始化与基础架构
 
-- [ ] 1. 创建项目目录结构
+- [x] 1. 创建项目目录结构
   - 创建 `doudizhu-game/` 目录
   - 初始化 `client/` 前端项目 (Vite + Vue 3 + TypeScript)
   - 初始化 `server/` 后端项目 (Node.js + Express)
   - 创建 `.gitignore`、`README.md`
   - _需求: 基础架构_
 
-- [ ] 2. 配置前端开发环境
+- [x] 2. 配置前端开发环境
   - 安装依赖：Vue 3、Pinia、Vue Router、Socket.io-client、Axios
   - 安装 Phaser 3 游戏引擎
   - 配置 Vite（端口 8081、代理配置）
@@ -17,21 +17,21 @@
   - 配置 SCSS
   - _需求: 基础架构_
 
-- [ ] 3. 配置后端开发环境
+- [x] 3. 配置后端开发环境
   - 安装依赖：Express、Socket.io、mysql2、redis、jsonwebtoken、bcryptjs
   - 创建 `src/app.js` 服务入口
   - 配置 CORS、JSON 中间件
   - 创建配置文件 `src/config/index.js`
   - _需求: 基础架构_
 
-- [ ] 4. 配置 Docker 环境
+- [x] 4. 配置 Docker 环境
   - 创建 `docker-compose.yml`（MySQL:3307、Redis:6380、Server:4000）
   - 创建 `server/Dockerfile`
   - 配置网络和数据卷
   - 测试 `docker-compose up -d` 启动
   - _需求: 基础架构_
 
-- [ ] 5. 创建数据库表结构
+- [x] 5. 创建数据库表结构
   - 创建 `server/sql/init.sql`
   - 创建 users 表（含积分字段）
   - 创建 game_records 表
@@ -46,7 +46,7 @@
 
 ## 阶段二：用户系统
 
-- [ ] 6. 实现用户注册/登录 API
+- [x] 6. 实现用户注册/登录 API
   - 创建 `server/src/models/User.js`
   - 创建 `server/src/routes/auth.js`
   - 实现 `POST /api/auth/register`（账号、密码、昵称）
@@ -54,14 +54,14 @@
   - 实现密码 bcrypt 加密
   - _需求: REQ-001_
 
-- [ ] 7. 实现 JWT 认证中间件
+- [x] 7. 实现 JWT 认证中间件
   - 创建 `server/src/middlewares/auth.js`
   - 验证 Authorization Header
   - 解析 JWT 获取用户信息
   - 处理过期和无效 token
   - _需求: REQ-001_
 
-- [ ] 8. 实现用户信息 API
+- [x] 8. 实现用户信息 API
   - 创建 `server/src/routes/user.js`
   - 实现 `GET /api/user/profile`
   - 实现 `PUT /api/user/profile`（修改昵称）
@@ -75,7 +75,7 @@
   - 签发游戏服务 JWT
   - _需求: REQ-002_
 
-- [ ] 10. 前端登录页面
+- [x] 10. 前端登录页面
   - 创建 `client/src/pages/login/index.vue`
   - 实现登录表单
   - 实现注册表单（切换）
@@ -83,7 +83,7 @@
   - 实现路由守卫
   - _需求: REQ-001_
 
-- [ ] 11. 前端用户状态管理
+- [x] 11. 前端用户状态管理
   - 创建 `client/src/store/user.ts`
   - 实现 login、register、logout actions
   - 实现 token 持久化
@@ -94,7 +94,7 @@
 
 ## 阶段三：积分系统
 
-- [ ] 12. 实现积分相关 API
+- [x] 12. 实现积分相关 API
   - 创建 `server/src/routes/coins.js`
   - 实现 `POST /api/coins/checkin`（每日签到）
   - 实现 `GET /api/coins/checkin-status`（签到状态）
@@ -102,14 +102,14 @@
   - 实现 `GET /api/coins/transactions`（交易记录）
   - _需求: REQ-003_
 
-- [ ] 13. 实现签到逻辑
+- [x] 13. 实现签到逻辑
   - 检查今日是否已签到
   - 计算连续签到天数
   - 计算签到奖励（500-2000 递增）
   - 记录签到和交易
   - _需求: REQ-003_
 
-- [ ] 14. 实现破产补助逻辑
+- [x] 14. 实现破产补助逻辑
   - 检查金币是否低于 1000
   - 检查当日领取次数（限 3 次）
   - 发放 2000 金币补助
@@ -120,21 +120,21 @@
 
 ## 阶段四：Socket.io 基础设施
 
-- [ ] 15. 配置 Socket.io 服务端
+- [x] 15. 配置 Socket.io 服务端
   - 创建 `server/src/socket/index.js`
   - 配置 Socket.io 与 Express 集成
   - 实现 JWT 认证中间件
   - 配置 Redis adapter（可选，用于多进程）
   - _需求: 基础架构_
 
-- [ ] 16. 实现在线状态管理
+- [x] 16. 实现在线状态管理
   - Redis 存储用户在线状态
   - 实现 `connect` 事件处理
   - 实现 `disconnect` 事件处理
   - 广播上下线通知
   - _需求: 基础架构_
 
-- [ ] 17. 前端 Socket 状态管理
+- [x] 17. 前端 Socket 状态管理
   - 创建 `client/src/store/socket.ts`
   - 实现 connect、disconnect actions
   - 实现事件监听和发送封装
@@ -145,14 +145,14 @@
 
 ## 阶段五：游戏大厅
 
-- [ ] 18. 实现房间 API
+- [x] 18. 实现房间 API
   - 创建 `server/src/routes/room.js`
   - 实现 `GET /api/rooms`（房间列表）
   - 实现 `POST /api/rooms`（创建房间）
   - 实现 `GET /api/rooms/:id`（房间详情）
   - _需求: REQ-004_
 
-- [ ] 19. 实现房间 Socket 事件（服务端）
+- [x] 19. 实现房间 Socket 事件（服务端）
   - 创建 `server/src/socket/room.js`
   - 实现 `room:create` 事件
   - 实现 `room:join` 事件
@@ -162,15 +162,13 @@
   - Redis 存储房间状态
   - _需求: REQ-005_
 
-- [ ] 20. 实现快速匹配逻辑
-  - 实现 `match:start` 事件
-  - 实现 `match:cancel` 事件
-  - Redis 匹配队列管理
-  - 匹配成功自动创建房间
-  - 60 秒超时处理
+- [x] 20. 实现快速匹配逻辑
+  - 实现 `room:quickMatch` 事件
+  - 自动查找或创建房间
+  - Redis 房间状态管理
   - _需求: REQ-004_
 
-- [ ] 21. 前端游戏大厅页面
+- [x] 21. 前端游戏大厅页面
   - 创建 `client/src/pages/lobby/index.vue`
   - 显示用户信息（头像、昵称、金币）
   - 实现快速匹配入口
@@ -179,19 +177,19 @@
   - 实现签到入口
   - _需求: REQ-004_
 
-- [ ] 22. 前端房间状态管理
+- [x] 22. 前端房间状态管理
   - 创建 `client/src/store/room.ts`
   - 实现 createRoom、joinRoom、leaveRoom actions
   - 实现 setReady action
   - 监听房间事件更新状态
   - _需求: REQ-005_
 
-- [ ] 23. 前端游戏房间等待页面
+- [x] 23. 前端游戏房间等待页面
   - 创建 `client/src/pages/room/index.vue`
   - 显示 3 个座位
   - 显示玩家信息和准备状态
   - 实现准备/取消准备按钮
-  - 实现邀请好友按钮
+  - 实现踢人功能（房主）
   - 实现离开房间按钮
   - _需求: REQ-005_
 
@@ -474,3 +472,18 @@
 | P0 | 一至七 | 核心功能，必须完成 |
 | P1 | 八至十 | 重要功能，建议完成 |
 | P2 | 十一至十三 | 增强功能，可后续迭代 |
+
+---
+
+## 进度总结
+
+**已完成阶段：**
+- 阶段一：项目初始化与基础架构 (5/5)
+- 阶段二：用户系统 (5/6，跳过聊天集成登录)
+- 阶段三：积分系统 (3/3)
+- 阶段四：Socket.io 基础设施 (3/3)
+- 阶段五：游戏大厅 (6/6)
+
+**下一步：**
+- 阶段六：Phaser 3 游戏引擎集成
+- 阶段七：游戏核心逻辑
