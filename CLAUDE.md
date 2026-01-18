@@ -404,7 +404,7 @@ GET /api/conversations/search/all?keyword=搜索关键词
 
 ### 实现细节
 
-通话状态管理位于 `client/src/store/call.ts`，包含以下关键机制：
+**前端状态管理** (`client/src/store/call.ts`)：
 
 | 机制 | 说明 |
 |------|------|
@@ -413,6 +413,17 @@ GET /api/conversations/search/all?keyword=搜索关键词
 | 操作锁 | `isProcessing` 防止快速重复点击（双击接听/拒绝） |
 | 状态即时更新 | 接听时立即设置 `connecting` 状态，防止重复操作 |
 | 忙线检测优化 | 仅 `connecting`/`connected` 状态视为通话中，`ringing` 状态不自动拒绝 |
+
+**后端状态管理** (`server/src/socket/call.js`)：
+
+通话状态使用 Redis 存储，支持多进程/多实例部署：
+
+| Redis Key | 说明 | TTL |
+|-----------|------|-----|
+| `call:{callId}` | 通话记录 JSON（callerId, receiverId, status, startTime） | 120秒 |
+| `user_call:{userId}` | 用户当前通话ID | 120秒 |
+
+> **重要**：早期版本使用内存 Map 存储通话状态，在 Socket.io Redis adapter 多进程环境下会导致"通话不存在"错误。现已迁移到 Redis 存储解决此问题。
 
 ### 通话记录消息
 
@@ -545,6 +556,12 @@ docker exec -it chat-redis redis-cli KEYS "online:*"
 
 # 查看 Redis 缓存（用户、好友、群组等）
 docker exec -it chat-redis redis-cli KEYS "*"
+
+# 查看当前活跃通话
+docker exec -it chat-redis redis-cli KEYS "call:*"
+
+# 查看用户通话状态
+docker exec -it chat-redis redis-cli KEYS "user_call:*"
 
 # 查看 Redis 缓存命中率
 docker exec -it chat-redis redis-cli INFO stats | grep -E "keyspace_hits|keyspace_misses"
