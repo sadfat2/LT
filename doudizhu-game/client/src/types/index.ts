@@ -73,7 +73,7 @@ export interface Player {
 }
 
 // 房间状态
-export type RoomStatus = 'waiting' | 'playing' | 'finished'
+export type RoomStatus = 'waiting' | 'starting' | 'playing' | 'finished'
 
 // 房间信息
 export interface Room {

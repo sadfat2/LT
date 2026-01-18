@@ -22,7 +22,7 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
-    path: '/game/:id',
+    path: '/game/:id?',
     name: 'Game',
     component: () => import('@/pages/game/index.vue'),
     meta: { requiresAuth: true },
