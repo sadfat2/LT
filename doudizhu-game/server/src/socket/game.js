@@ -860,8 +860,38 @@ async function handleDisconnectForceEnd(io, roomId, userId, game) {
   console.log(`断线判负处理完成: 房间=${roomId}`)
 }
 
+/**
+ * 处理所有玩家断线（立即结束游戏，无需等待超时）
+ */
+async function handleAllPlayersDisconnected(io, roomId, game) {
+  console.log(`所有玩家都已离线，立即结束游戏: 房间=${roomId}`)
+
+  // 清除游戏计时器
+  if (game.turnTimeout) {
+    clearTimeout(game.turnTimeout)
+    game.turnTimeout = null
+  }
+
+  // 删除游戏实例
+  activeGames.delete(roomId)
+
+  // 清理所有玩家的 Redis 映射和断线超时定时器
+  const { cancelDisconnectTimer } = require('./index')
+  for (const player of game.players) {
+    await redis.del(`user_room:${player.id}`)
+    await redis.del(`reconnect:${player.id}`)
+    cancelDisconnectTimer(player.id)
+  }
+
+  // 删除房间
+  await redis.del(`room:${roomId}`)
+
+  console.log(`所有玩家断线，游戏已清理: 房间=${roomId}`)
+}
+
 module.exports = handleGameEvents
 module.exports.handlePlayerDisconnect = handlePlayerDisconnect
 module.exports.handleDisconnectForceEnd = handleDisconnectForceEnd
+module.exports.handleAllPlayersDisconnected = handleAllPlayersDisconnected
 module.exports.handleGameEnd = handleGameEnd
 module.exports.activeGames = activeGames

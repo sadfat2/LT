@@ -51,7 +51,10 @@ export class GameManager {
         () => this.gameStore!.gameState,
         (newState) => {
           if (newState) {
-            this.eventBus.emitEvent('vue:gameStateChanged', { state: newState })
+            this.eventBus.emitEvent('vue:gameStateChanged', {
+              state: newState,
+              mySeat: this.gameStore!.mySeat,
+            })
           }
         },
         { deep: true }
@@ -73,6 +76,108 @@ export class GameManager {
         { deep: true }
       )
     )
+
+    // 监听选中的牌变化，更新出牌按钮状态
+    this.watchers.push(
+      watch(
+        () => this.gameStore!.selectedCardIds,
+        (selectedIds) => {
+          console.log('[GameManager] selectedCardIds 变化:', {
+            selectedIds,
+            phase: this.gameStore!.phase,
+            isMyTurn: this.gameStore!.isMyTurn,
+          })
+          if (this.gameStore!.phase === 'playing' && this.gameStore!.isMyTurn) {
+            const canPlay = selectedIds.length > 0
+            console.log('[GameManager] 更新出牌按钮状态:', canPlay)
+            this.eventBus.emitEvent('ui:updatePlayButton', { canPlay })
+          }
+        },
+        { deep: true }
+      )
+    )
+
+    // 监听 Phaser 场景准备就绪，等待两个场景都准备好后再同步
+    let gameSceneReady = false
+    let uiSceneReady = false
+
+    const trySync = () => {
+      if (gameSceneReady && uiSceneReady) {
+        console.log('[GameManager] 两个场景都准备就绪，同步游戏状态')
+        this.syncCurrentState()
+      }
+    }
+
+    this.eventBus.onceEvent('scene:gameReady', () => {
+      console.log('[GameManager] GameScene 准备就绪')
+      gameSceneReady = true
+      trySync()
+    })
+
+    this.eventBus.onceEvent('scene:uiReady', () => {
+      console.log('[GameManager] UIScene 准备就绪')
+      uiSceneReady = true
+      trySync()
+    })
+  }
+
+  // 同步当前游戏状态到 Phaser（用于 Phaser 初始化后同步已存在的数据）
+  private syncCurrentState(): void {
+    if (!this.gameStore) return
+
+    // 同步游戏状态
+    if (this.gameStore.gameState) {
+      console.log('[GameManager] 同步 gameState', this.gameStore.gameState)
+      this.eventBus.emitEvent('vue:gameStateChanged', {
+        state: this.gameStore.gameState,
+        mySeat: this.gameStore.mySeat,
+      })
+    }
+
+    // 同步手牌
+    if (this.gameStore.myCards.length > 0 && this.gameStore.mySeat >= 0) {
+      console.log('[GameManager] 同步手牌', this.gameStore.myCards.length, '张')
+      this.eventBus.emitEvent('vue:cardsDealt', {
+        cards: this.gameStore.myCards,
+        seat: this.gameStore.mySeat,
+      })
+    }
+
+    // 如果是叫地主阶段，检查是否轮到自己
+    if (this.gameStore.gameState?.phase === 'bidding' && this.gameStore.mySeat >= 0) {
+      const isMyBidTurn = this.gameStore.gameState.currentSeat === this.gameStore.mySeat
+      console.log('[GameManager] 同步叫分回合', {
+        currentSeat: this.gameStore.gameState.currentSeat,
+        mySeat: this.gameStore.mySeat,
+        isMyBidTurn,
+      })
+      if (isMyBidTurn) {
+        // 同时设置 isMyTurn 状态
+        this.gameStore.isMyTurn = true
+        this.eventBus.emitEvent('vue:bidTurn', {
+          seat: this.gameStore.gameState.currentSeat,
+          timeout: 30000,
+        })
+      }
+    }
+
+    // 如果是出牌阶段，检查是否轮到自己
+    if (this.gameStore.gameState?.phase === 'playing' && this.gameStore.mySeat >= 0) {
+      const isMyPlayTurn = this.gameStore.gameState.currentSeat === this.gameStore.mySeat
+      console.log('[GameManager] 同步出牌回合', {
+        currentSeat: this.gameStore.gameState.currentSeat,
+        mySeat: this.gameStore.mySeat,
+        isMyPlayTurn,
+      })
+      if (isMyPlayTurn) {
+        // 同时设置 isMyTurn 状态
+        this.gameStore.isMyTurn = true
+        this.eventBus.emitEvent('vue:playTurn', {
+          seat: this.gameStore.gameState.currentSeat,
+          timeout: 30000,
+        })
+      }
+    }
   }
 
   // 设置 Phaser 事件监听（处理来自 Phaser 的事件）

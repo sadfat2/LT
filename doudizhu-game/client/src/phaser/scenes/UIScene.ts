@@ -27,6 +27,9 @@ export class UIScene extends Phaser.Scene {
 
     // 设置事件监听
     this.setupEventListeners()
+
+    // 通知 UI 场景准备就绪
+    this.eventBus.emitEvent('scene:uiReady')
   }
 
   private createUIComponents(): void {
@@ -87,6 +90,11 @@ export class UIScene extends Phaser.Scene {
       this.actionButtons.hide()
     })
 
+    // 更新出牌按钮状态（选中牌后启用）
+    this.eventBus.onEvent('ui:updatePlayButton', ({ canPlay }) => {
+      this.actionButtons.setPlayEnabled(canPlay)
+    })
+
     // 显示结算面板
     this.eventBus.onEvent('ui:showResult', ({ results }) => {
       // 从结果中判断是否胜利（需要知道当前玩家ID）
@@ -114,10 +122,8 @@ export class UIScene extends Phaser.Scene {
       this.bidPanel.hide()
     })
 
-    // 出牌后隐藏按钮
-    this.eventBus.onEvent('phaser:playCards', () => {
-      this.actionButtons.hide()
-    })
+    // 出牌成功后隐藏按钮（由 vue:cardPlayed 事件触发，而不是点击时触发）
+    // 注意：phaser:playCards 只是发起出牌请求，不一定成功
 
     // 不出后隐藏按钮
     this.eventBus.onEvent('phaser:pass', () => {

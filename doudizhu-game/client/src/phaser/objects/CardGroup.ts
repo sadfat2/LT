@@ -149,7 +149,17 @@ export class CardGroup extends Phaser.GameObjects.Container {
         const delay = i * 30
         promises.push(
           new Promise((resolve) => {
+            // 检查 scene 是否仍然有效
+            if (!this.scene || !this.scene.time) {
+              resolve()
+              return
+            }
             this.scene.time.delayedCall(delay, () => {
+              // 再次检查 card 和 scene 是否有效
+              if (!card || !card.scene) {
+                resolve()
+                return
+              }
               card.moveToPosition(targetX, targetY, ANIMATION.cardArrange).then(resolve)
             })
           })

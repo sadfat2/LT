@@ -4,7 +4,7 @@ import type { Card, GameState, Player, BidInfo, PlayInfo, GameResult } from '@/t
 // 定义事件类型
 export interface GameEvents {
   // Vue -> Phaser 事件
-  'vue:gameStateChanged': { state: GameState }
+  'vue:gameStateChanged': { state: GameState; mySeat?: number }
   'vue:cardsDealt': { cards: Card[]; seat: number }
   'vue:bidTurn': { seat: number; timeout: number }
   'vue:bidMade': { bidInfo: BidInfo }
@@ -28,6 +28,7 @@ export interface GameEvents {
   // 场景内部事件
   'scene:bootComplete': void
   'scene:gameReady': void
+  'scene:uiReady': void
   'ui:showBidPanel': { currentBid: number }
   'ui:hideBidPanel': void
   'ui:showActionButtons': { canPass: boolean; canPlay: boolean }
@@ -35,6 +36,7 @@ export interface GameEvents {
   'ui:showResult': { winnerId: number; results: GameResult[] }
   'ui:updateTimer': { seat: number; time: number }
   'ui:hideTimer': { seat: number }
+  'ui:updatePlayButton': { canPlay: boolean }
 
   // 聊天事件
   'phaser:sendEmoji': { emojiId: string }

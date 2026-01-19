@@ -206,6 +206,12 @@ export class CardSprite extends Phaser.GameObjects.Container {
   // 移动到指定位置（带动画）
   moveToPosition(x: number, y: number, duration = ANIMATION.cardArrange): Promise<void> {
     return new Promise((resolve) => {
+      // 检查 scene 是否仍然有效
+      if (!this.scene || !this.scene.tweens) {
+        resolve()
+        return
+      }
+
       this.originalY = y
 
       this.scene.tweens.add({
@@ -222,6 +228,12 @@ export class CardSprite extends Phaser.GameObjects.Container {
   // 飞入动画
   flyIn(fromX: number, fromY: number, toX: number, toY: number, delay = 0): Promise<void> {
     return new Promise((resolve) => {
+      // 检查 scene 是否仍然有效
+      if (!this.scene || !this.scene.tweens) {
+        resolve()
+        return
+      }
+
       this.setPosition(fromX, fromY)
       this.setScale(0.5)
       this.setAlpha(0)
@@ -245,6 +257,12 @@ export class CardSprite extends Phaser.GameObjects.Container {
   // 飞出动画（出牌）
   flyOut(toX: number, toY: number): Promise<void> {
     return new Promise((resolve) => {
+      // 检查 scene 是否仍然有效
+      if (!this.scene || !this.scene.tweens) {
+        resolve()
+        return
+      }
+
       this.setInteractiveState(false)
 
       this.scene.tweens.add({

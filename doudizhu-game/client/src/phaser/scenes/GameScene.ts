@@ -172,7 +172,11 @@ export class GameScene extends Phaser.Scene {
 
   private setupEventListeners(): void {
     // 游戏状态更新
-    this.eventBus.onEvent('vue:gameStateChanged', ({ state }) => {
+    this.eventBus.onEvent('vue:gameStateChanged', ({ state, mySeat }) => {
+      // 如果传入了 mySeat 且有效，更新本地 mySeat
+      if (mySeat !== undefined && mySeat >= 0) {
+        this.mySeat = mySeat
+      }
       this.updateGameState(state)
     })
 
@@ -189,6 +193,11 @@ export class GameScene extends Phaser.Scene {
     // 叫分回合
     this.eventBus.onEvent('vue:bidTurn', ({ seat, timeout }) => {
       this.onBidTurn(seat, timeout)
+    })
+
+    // 有人叫分（显示叫分气泡）
+    this.eventBus.onEvent('vue:bidMade', ({ bidInfo }) => {
+      this.onBidMade(bidInfo.seat, bidInfo.score)
     })
 
     // 出牌回合
@@ -362,6 +371,16 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // 有人叫分（显示叫分气泡）
+  private onBidMade(seat: number, score: number): void {
+    const displayIndex = this.getDisplayIndex(seat)
+    const bubble = this.emojiBubbles[displayIndex]
+    if (bubble) {
+      const text = score === 0 ? '不叫' : `${score}分`
+      bubble.showMessage(text)
+    }
+  }
+
   // 出牌回合
   private onPlayTurn(seat: number, timeout: number): void {
     const displayIndex = this.getDisplayIndex(seat)
@@ -429,6 +448,11 @@ export class GameScene extends Phaser.Scene {
       if (player) {
         avatar.updateCardCount(player.cardCount)
       }
+    }
+
+    // 如果是自己出牌/不出，隐藏操作按钮
+    if (seat === this.mySeat) {
+      this.eventBus.emitEvent('ui:hideActionButtons')
     }
 
     // 隐藏计时器

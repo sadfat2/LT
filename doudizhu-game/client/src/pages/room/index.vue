@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useSocketStore } from '@/store/socket'
 import { useRoomStore } from '@/store/room'
+import { useGameStore } from '@/store/game'
 import type { Player } from '@/types'
 
 const router = useRouter()
@@ -11,6 +12,7 @@ const route = useRoute()
 const userStore = useUserStore()
 const socketStore = useSocketStore()
 const roomStore = useRoomStore()
+const gameStore = useGameStore()
 
 const roomId = ref(route.params.id as string)
 const showKickConfirm = ref(false)
@@ -75,10 +77,14 @@ const handleKick = async () => {
 }
 
 // 监听游戏开始
-watch(
+const stopWatchStatus = watch(
   () => roomStore.currentRoom?.status,
   (status) => {
     if (status === 'starting' || status === 'playing') {
+      // 提前初始化游戏事件监听，确保不会错过 game:started, game:dealt, game:bid_turn 等事件
+      gameStore.initGameListeners()
+      // 停止监听，防止重复触发
+      stopWatchStatus()
       router.push(`/game/${roomId.value}`)
     }
   }
@@ -106,6 +112,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  // 停止状态监听
+  stopWatchStatus()
+
   // 如果不是跳转到游戏页面，则离开房间
   if (!router.currentRoute.value.path.startsWith('/game/')) {
     roomStore.leaveRoom().catch(() => {})

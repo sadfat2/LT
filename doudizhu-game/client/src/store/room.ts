@@ -75,7 +75,9 @@ export const useRoomStore = defineStore('room', () => {
 
     // 游戏即将开始
     socketStore.on<{ roomId: string }>('game:starting', (data) => {
+      console.log('[roomStore] 收到 game:starting', data)
       if (currentRoom.value && currentRoom.value.id === data.roomId) {
+        console.log('[roomStore] 更新房间状态为 starting')
         currentRoom.value.status = 'starting'
       }
     })

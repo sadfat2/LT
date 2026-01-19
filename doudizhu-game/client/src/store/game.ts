@@ -42,12 +42,19 @@ export const useGameStore = defineStore('game', () => {
   const isMyTurn = ref(false)
   const hintCards = ref<Card[]>([])
 
+  // 我的座位（直接存储，不依赖 gameState 计算）
+  const mySeatRef = ref<number>(-1)
+
   // 重连相关状态
   const pendingGameInfo = ref<PendingGameInfo | null>(null)
   const isReconnecting = ref(false)
 
-  // 计算属性
+  // 监听器初始化标志
+  const listenersInitialized = ref(false)
+
+  // 计算属性 - 优先使用直接存储的座位值
   const mySeat = computed(() => {
+    if (mySeatRef.value >= 0) return mySeatRef.value
     if (!gameState.value) return -1
     const player = gameState.value.players.find((p) => p.id === userStore.user?.id)
     return player?.seat ?? -1
@@ -74,25 +81,44 @@ export const useGameStore = defineStore('game', () => {
 
   // 初始化游戏事件监听
   function initGameListeners(): void {
+    // 防止重复初始化
+    if (listenersInitialized.value) {
+      console.log('[gameStore] 监听器已初始化，跳过')
+      return
+    }
+    listenersInitialized.value = true
+    console.log('[gameStore] 初始化游戏事件监听')
+
     // 游戏开始
     socketStore.on<{ gameState: GameState }>('game:started', (data) => {
+      console.log('[gameStore] 收到 game:started', data.gameState)
       gameState.value = data.gameState
       eventBus.emitEvent('vue:gameStateChanged', { state: data.gameState })
     })
 
     // 发牌 - 服务端只发给当前玩家，所以不需要检查 seat
     socketStore.on<{ cards: Card[]; seat: number }>('game:dealt', (data) => {
+      // 直接存储自己的座位号，避免依赖 gameState 计算
+      mySeatRef.value = data.seat
+      console.log('[gameStore] 收到 game:dealt，设置 mySeat =', data.seat)
       myCards.value = sortCards(data.cards)
       eventBus.emitEvent('vue:cardsDealt', { cards: myCards.value, seat: data.seat })
     })
 
     // 叫分回合
     socketStore.on<{ seat: number; timeout: number }>('game:bid_turn', (data) => {
-      console.log('[前端] 收到 game:bid_turn', { seat: data.seat, mySeat: mySeat.value, userId: userStore.user?.id })
+      console.log('[gameStore] 收到 game:bid_turn', {
+        seat: data.seat,
+        mySeat: mySeat.value,
+        userId: userStore.user?.id,
+        gameStateExists: !!gameState.value,
+        phase: gameState.value?.phase,
+      })
       isMyTurn.value = data.seat === mySeat.value
       if (gameState.value) {
         gameState.value.currentSeat = data.seat
       }
+      console.log('[gameStore] 发送 vue:bidTurn 事件')
       eventBus.emitEvent('vue:bidTurn', data)
     })
 
@@ -108,11 +134,18 @@ export const useGameStore = defineStore('game', () => {
     socketStore.on<{ seat: number; bottomCards: Card[]; bidScore: number }>(
       'game:landlord_decided',
       (data) => {
+        console.log('[gameStore] 收到 game:landlord_decided', {
+          landlordSeat: data.seat,
+          mySeat: mySeat.value,
+          isLandlord: data.seat === mySeat.value,
+        })
         if (gameState.value) {
           gameState.value.landlordSeat = data.seat
           gameState.value.bottomCards = data.bottomCards
           gameState.value.bidScore = data.bidScore
           gameState.value.phase = 'playing'
+          // 地主先出牌，设置 currentSeat
+          gameState.value.currentSeat = data.seat
 
           // 更新玩家角色
           gameState.value.players.forEach((player) => {
@@ -120,9 +153,12 @@ export const useGameStore = defineStore('game', () => {
           })
         }
 
-        // 如果自己是地主，将底牌加入手牌
+        // 如果自己是地主，将底牌加入手牌，并设置为自己的回合
         if (data.seat === mySeat.value) {
           myCards.value = sortCards([...myCards.value, ...data.bottomCards])
+          // 地主先出牌，如果自己是地主，设置 isMyTurn = true
+          isMyTurn.value = true
+          console.log('[gameStore] 自己是地主，设置 isMyTurn = true')
         }
 
         eventBus.emitEvent('vue:landlordDecided', data)
@@ -131,6 +167,12 @@ export const useGameStore = defineStore('game', () => {
 
     // 出牌回合
     socketStore.on<{ seat: number; timeout: number }>('game:play_turn', (data) => {
+      console.log('[gameStore] 收到 game:play_turn', {
+        seat: data.seat,
+        mySeat: mySeat.value,
+        mySeatRef: mySeatRef.value,
+        isMyTurn: data.seat === mySeat.value,
+      })
       isMyTurn.value = data.seat === mySeat.value
       if (gameState.value) {
         gameState.value.currentSeat = data.seat
@@ -284,7 +326,8 @@ export const useGameStore = defineStore('game', () => {
   async function bid(score: number): Promise<void> {
     try {
       await socketStore.emit('game:bid', { score })
-      isMyTurn.value = false
+      // 不在这里设置 isMyTurn = false
+      // 回合状态由服务器事件 (game:bid_turn, game:play_turn) 管理
     } catch (error) {
       console.error('叫分失败:', error)
       throw error
@@ -372,8 +415,10 @@ export const useGameStore = defineStore('game', () => {
     selectedCardIds.value = []
     isMyTurn.value = false
     hintCards.value = []
+    mySeatRef.value = -1  // 重置座位信息
     pendingGameInfo.value = null
     isReconnecting.value = false
+    // 不在这里重置 listenersInitialized，由 removeGameListeners 负责
     eventBus.emitEvent('vue:resetGame')
   }
 
@@ -404,6 +449,12 @@ export const useGameStore = defineStore('game', () => {
         // 恢复游戏状态
         gameState.value = result.gameState
         myCards.value = sortCards(result.cards)
+
+        // 从 gameState 中找到自己的座位并存储
+        const myPlayer = result.gameState.players.find((p) => p.id === userStore.user?.id)
+        if (myPlayer) {
+          mySeatRef.value = myPlayer.seat
+        }
 
         // 计算当前是否是自己的回合
         if (result.gameState.currentSeat === mySeat.value) {
@@ -454,6 +505,9 @@ export const useGameStore = defineStore('game', () => {
     socketStore.off('chat:quick')
     eventBus.offEvent('phaser:sendEmoji')
     eventBus.offEvent('phaser:sendQuickMessage')
+    // 重置标志
+    listenersInitialized.value = false
+    console.log('[gameStore] 清除游戏事件监听')
   }
 
   return {

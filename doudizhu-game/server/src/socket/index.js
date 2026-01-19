@@ -127,6 +127,41 @@ function initSocket(io) {
 
               console.log(`玩家 ${user.nickname} 断线，60秒内可重连，token: ${reconnectToken}`)
 
+              // 检查是否所有玩家都已离线
+              const { activeGames, handleAllPlayersDisconnected } = require('./game')
+              const game = activeGames.get(roomId)
+
+              // 调试日志
+              const playersStatus = room.players.map(p => ({ id: p.id, nickname: p.nickname, isOnline: p.isOnline }))
+              console.log(`[断线检测] 房间=${roomId}, 游戏存在=${!!game}, 玩家状态:`, JSON.stringify(playersStatus))
+
+              const allOffline = room.players.every((p) => !p.isOnline)
+              console.log(`[断线检测] 所有玩家离线=${allOffline}`)
+
+              if (allOffline) {
+                console.log(`所有玩家都已离线，立即清理: 房间=${roomId}`)
+                if (game) {
+                  // 游戏实例存在，调用完整清理
+                  await handleAllPlayersDisconnected(io, roomId, game)
+                } else {
+                  // 游戏实例不存在（可能服务器重启过），直接清理房间数据
+                  console.log(`游戏实例不存在，直接清理房间数据`)
+                  for (const player of room.players) {
+                    await redis.del(`user_room:${player.id}`)
+                    await redis.del(`reconnect:${player.id}`)
+                    // 取消断线超时定时器
+                    const timerId = disconnectTimers.get(player.id)
+                    if (timerId) {
+                      clearTimeout(timerId)
+                      disconnectTimers.delete(player.id)
+                    }
+                  }
+                  await redis.del(`room:${roomId}`)
+                  console.log(`房间数据已清理: 房间=${roomId}`)
+                }
+                return // 不再设置超时定时器
+              }
+
               // 设置60秒超时定时器
               const timerId = setTimeout(async () => {
                 await handleDisconnectTimeout(io, roomId, user.id)
