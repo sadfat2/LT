@@ -485,9 +485,11 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
 }
 
 .skip-btn {
+  flex: 1.3;
   background: var(--bg-glass);
   border: 1rpx solid var(--border-subtle);
   color: var(--text-secondary);
