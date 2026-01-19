@@ -44,6 +44,9 @@ export const usersApi = {
   unban: (id: number) =>
     post(`/api/admin/users/${id}/unban`),
 
+  resetPassword: (id: number, newPassword: string) =>
+    put(`/api/admin/users/${id}/password`, { newPassword }),
+
   getConversations: (id: number) =>
     get<Conversation[]>(`/api/admin/users/${id}/conversations`),
 

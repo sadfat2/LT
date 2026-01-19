@@ -67,10 +67,11 @@
             {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
             <el-button link type="primary" @click="viewMessages(row)">聊天记录</el-button>
+            <el-button link type="warning" @click="handleResetPassword(row)">重置密码</el-button>
             <el-button
               v-if="row.status === 'active'"
               link
@@ -151,6 +152,37 @@
         <el-button type="primary" :loading="createLoading" @click="confirmCreate">确认创建</el-button>
       </template>
     </el-dialog>
+
+    <!-- 重置密码弹窗 -->
+    <el-dialog v-model="resetPasswordDialogVisible" title="重置用户密码" width="450px">
+      <div v-if="currentResetUser" class="reset-user-info">
+        用户: {{ currentResetUser.nickname }} (账号: {{ currentResetUser.account }})
+      </div>
+      <el-form ref="resetPasswordFormRef" :model="resetPasswordForm" :rules="resetPasswordRules" label-width="80px">
+        <el-form-item label="新密码" prop="newPassword">
+          <el-input
+            v-model="resetPasswordForm.newPassword"
+            type="password"
+            placeholder="6-20位字符"
+            maxlength="20"
+            show-password
+          />
+        </el-form-item>
+        <el-form-item label="确认密码" prop="confirmPassword">
+          <el-input
+            v-model="resetPasswordForm.confirmPassword"
+            type="password"
+            placeholder="再次输入密码"
+            maxlength="20"
+            show-password
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="resetPasswordDialogVisible = false">取消</el-button>
+        <el-button type="warning" :loading="resetPasswordLoading" @click="confirmResetPassword">确认重置</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -197,6 +229,35 @@ const createRules: FormRules = {
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, max: 20, message: '密码长度为6-20位', trigger: 'blur' }
+  ]
+}
+
+// 重置密码相关
+const resetPasswordDialogVisible = ref(false)
+const resetPasswordLoading = ref(false)
+const resetPasswordFormRef = ref<FormInstance>()
+const currentResetUser = ref<User | null>(null)
+const resetPasswordForm = ref({
+  newPassword: '',
+  confirmPassword: ''
+})
+const resetPasswordRules: FormRules = {
+  newPassword: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 6, max: 20, message: '密码长度为6-20位', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, message: '请确认密码', trigger: 'blur' },
+    {
+      validator: (_rule: any, value: string, callback: (error?: Error) => void) => {
+        if (value !== resetPasswordForm.value.newPassword) {
+          callback(new Error('两次输入的密码不一致'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
   ]
 }
 
@@ -306,6 +367,37 @@ async function confirmCreate() {
   }
 }
 
+function handleResetPassword(user: User) {
+  currentResetUser.value = user
+  resetPasswordForm.value = {
+    newPassword: '',
+    confirmPassword: ''
+  }
+  resetPasswordDialogVisible.value = true
+}
+
+async function confirmResetPassword() {
+  if (!resetPasswordFormRef.value || !currentResetUser.value) return
+
+  try {
+    await resetPasswordFormRef.value.validate()
+  } catch {
+    return
+  }
+
+  resetPasswordLoading.value = true
+  try {
+    await usersApi.resetPassword(currentResetUser.value.id, resetPasswordForm.value.newPassword)
+    ElMessage.success('密码重置成功')
+    resetPasswordDialogVisible.value = false
+  } catch (error: any) {
+    const message = error?.response?.data?.message || '重置失败，请重试'
+    ElMessage.error(message)
+  } finally {
+    resetPasswordLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadUsers()
 })
@@ -343,6 +435,15 @@ onMounted(() => {
     margin-top: 20px;
     display: flex;
     justify-content: flex-end;
+  }
+
+  .reset-user-info {
+    padding: 12px;
+    margin-bottom: 16px;
+    background: #f5f7fa;
+    border-radius: 4px;
+    color: #606266;
+    font-size: 14px;
   }
 }
 </style>

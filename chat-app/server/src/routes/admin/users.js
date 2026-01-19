@@ -246,6 +246,56 @@ router.put('/:id', async (req, res, next) => {
 });
 
 /**
+ * 重置用户密码
+ * PUT /api/admin/users/:id/password
+ */
+router.put('/:id/password', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    // 验证新密码
+    if (!newPassword) {
+      throw new AppError('新密码不能为空', 400);
+    }
+
+    if (newPassword.length < 6 || newPassword.length > 20) {
+      throw new AppError('密码长度需要6-20位字符', 400);
+    }
+
+    // 检查用户是否存在
+    const user = await User.findById(id);
+    if (!user) {
+      throw new AppError('用户不存在', 404);
+    }
+
+    // 更新密码
+    await User.updatePassword(id, newPassword);
+
+    // 强制用户下线（确保安全）
+    try {
+      const io = getIO();
+      io.to(`user_${id}`).emit('force_logout', {
+        reason: 'password_changed',
+        message: '您的密码已被管理员重置，请重新登录'
+      });
+    } catch (socketError) {
+      console.error('发送强制下线事件失败:', socketError);
+    }
+
+    // 清除 Redis 在线状态
+    await redisClient.del(`online:${id}`);
+
+    res.json({
+      code: 200,
+      message: '密码重置成功'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * 封停用户
  * POST /api/admin/users/:id/ban
  */
