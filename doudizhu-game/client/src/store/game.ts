@@ -12,6 +12,23 @@ import type {
   PlayInfo,
   GameResult,
 } from '@/types'
+import { getEmojiById } from '@/game/chatConstants'
+
+// 重连信息类型
+interface PendingGameInfo {
+  hasPendingGame: boolean
+  roomId?: string
+  remainingTime?: number
+}
+
+// 重连结果类型
+interface ReconnectResult {
+  success: boolean
+  gameState?: GameState
+  cards?: Card[]
+  roomId?: string
+  error?: string
+}
 
 export const useGameStore = defineStore('game', () => {
   const socketStore = useSocketStore()
@@ -24,6 +41,10 @@ export const useGameStore = defineStore('game', () => {
   const selectedCardIds = ref<number[]>([])
   const isMyTurn = ref(false)
   const hintCards = ref<Card[]>([])
+
+  // 重连相关状态
+  const pendingGameInfo = ref<PendingGameInfo | null>(null)
+  const isReconnecting = ref(false)
 
   // 计算属性
   const mySeat = computed(() => {
@@ -59,16 +80,15 @@ export const useGameStore = defineStore('game', () => {
       eventBus.emitEvent('vue:gameStateChanged', { state: data.gameState })
     })
 
-    // 发牌
+    // 发牌 - 服务端只发给当前玩家，所以不需要检查 seat
     socketStore.on<{ cards: Card[]; seat: number }>('game:dealt', (data) => {
-      if (data.seat === mySeat.value) {
-        myCards.value = sortCards(data.cards)
-        eventBus.emitEvent('vue:cardsDealt', { cards: myCards.value, seat: data.seat })
-      }
+      myCards.value = sortCards(data.cards)
+      eventBus.emitEvent('vue:cardsDealt', { cards: myCards.value, seat: data.seat })
     })
 
     // 叫分回合
     socketStore.on<{ seat: number; timeout: number }>('game:bid_turn', (data) => {
+      console.log('[前端] 收到 game:bid_turn', { seat: data.seat, mySeat: mySeat.value, userId: userStore.user?.id })
       isMyTurn.value = data.seat === mySeat.value
       if (gameState.value) {
         gameState.value.currentSeat = data.seat
@@ -150,13 +170,91 @@ export const useGameStore = defineStore('game', () => {
     })
 
     // 游戏结束
-    socketStore.on<{ winnerId: number; results: GameResult[] }>('game:ended', (data) => {
+    socketStore.on<{
+      winnerId: number
+      results: GameResult[]
+      reason?: string
+      disconnectedPlayerId?: number
+    }>('game:ended', (data) => {
       if (gameState.value) {
         gameState.value.phase = 'finished'
         gameState.value.winnerId = data.winnerId
       }
       isMyTurn.value = false
-      eventBus.emitEvent('vue:gameEnded', data)
+      // 传递断线原因（如果有）
+      eventBus.emitEvent('vue:gameEnded', {
+        ...data,
+        isDisconnectEnd: data.reason === 'disconnect_timeout',
+        disconnectedPlayerId: data.disconnectedPlayerId,
+      })
+    })
+
+    // 玩家断线
+    socketStore.on<{ playerId: number; timeout: number }>('player:offline', (data) => {
+      if (gameState.value) {
+        const player = gameState.value.players.find((p) => p.id === data.playerId)
+        if (player) {
+          player.isOnline = false
+        }
+      }
+      eventBus.emitEvent('vue:playerOffline', data)
+    })
+
+    // 玩家重连
+    socketStore.on<{ playerId: number }>('player:online', (data) => {
+      if (gameState.value) {
+        const player = gameState.value.players.find((p) => p.id === data.playerId)
+        if (player) {
+          player.isOnline = true
+        }
+      }
+      eventBus.emitEvent('vue:playerOnline', data)
+    })
+
+    // 收到表情
+    socketStore.on<{ playerId: number; emojiId: string; emoji: { id: string; name: string } }>(
+      'chat:emoji',
+      (data) => {
+        // 根据玩家ID找到座位
+        const player = gameState.value?.players.find((p) => p.id === data.playerId)
+        if (player) {
+          const emoji = getEmojiById(data.emojiId)
+          if (emoji) {
+            eventBus.emitEvent('vue:showEmoji', {
+              seat: player.seat,
+              emojiId: data.emojiId,
+              symbol: emoji.symbol,
+            })
+          }
+        }
+      }
+    )
+
+    // 收到快捷消息
+    socketStore.on<{
+      playerId: number
+      messageId: string
+      message: { id: string; text: string }
+    }>('chat:quick', (data) => {
+      // 根据玩家ID找到座位
+      const player = gameState.value?.players.find((p) => p.id === data.playerId)
+      if (player) {
+        eventBus.emitEvent('vue:showQuickMessage', {
+          seat: player.seat,
+          messageId: data.messageId,
+          text: data.message.text,
+        })
+      }
+    })
+
+    // 监听 Phaser 发送表情请求
+    eventBus.onEvent('phaser:sendEmoji', ({ emojiId }) => {
+      sendEmoji(emojiId)
+    })
+
+    // 监听 Phaser 发送快捷消息请求
+    eventBus.onEvent('phaser:sendQuickMessage', ({ messageId }) => {
+      sendQuickMessage(messageId)
     })
   }
 
@@ -239,6 +337,34 @@ export const useGameStore = defineStore('game', () => {
     }
   }
 
+  // 发送表情
+  async function sendEmoji(emojiId: string): Promise<void> {
+    try {
+      const result = await socketStore.emit<{ success?: boolean; error?: string }>('chat:emoji', {
+        emojiId,
+      })
+      if (result.error) {
+        console.warn('发送表情失败:', result.error)
+      }
+    } catch (error) {
+      console.error('发送表情失败:', error)
+    }
+  }
+
+  // 发送快捷消息
+  async function sendQuickMessage(messageId: string): Promise<void> {
+    try {
+      const result = await socketStore.emit<{ success?: boolean; error?: string }>('chat:quick', {
+        messageId,
+      })
+      if (result.error) {
+        console.warn('发送快捷消息失败:', result.error)
+      }
+    } catch (error) {
+      console.error('发送快捷消息失败:', error)
+    }
+  }
+
   // 重置游戏状态
   function resetGame(): void {
     gameState.value = null
@@ -246,7 +372,70 @@ export const useGameStore = defineStore('game', () => {
     selectedCardIds.value = []
     isMyTurn.value = false
     hintCards.value = []
+    pendingGameInfo.value = null
+    isReconnecting.value = false
     eventBus.emitEvent('vue:resetGame')
+  }
+
+  // 检查是否有未完成的游戏
+  async function checkPendingGame(): Promise<PendingGameInfo> {
+    try {
+      const result = await socketStore.emit<PendingGameInfo>('game:check-pending', {})
+      pendingGameInfo.value = result
+      return result
+    } catch (error) {
+      console.error('检查未完成游戏失败:', error)
+      return { hasPendingGame: false }
+    }
+  }
+
+  // 重连到游戏
+  async function reconnectToGame(): Promise<ReconnectResult> {
+    if (isReconnecting.value) {
+      return { success: false, error: '正在重连中' }
+    }
+
+    isReconnecting.value = true
+
+    try {
+      const result = await socketStore.emit<ReconnectResult>('game:reconnect', {})
+
+      if (result.success && result.gameState && result.cards) {
+        // 恢复游戏状态
+        gameState.value = result.gameState
+        myCards.value = sortCards(result.cards)
+
+        // 计算当前是否是自己的回合
+        if (result.gameState.currentSeat === mySeat.value) {
+          isMyTurn.value = true
+        }
+
+        // 通知 Phaser 恢复游戏
+        eventBus.emitEvent('vue:gameReconnected', {
+          gameState: result.gameState,
+          cards: myCards.value,
+        })
+
+        // 清除重连信息
+        pendingGameInfo.value = null
+
+        console.log('重连成功')
+        return result
+      } else {
+        console.error('重连失败:', result.error)
+        return { success: false, error: result.error || '重连失败' }
+      }
+    } catch (error) {
+      console.error('重连异常:', error)
+      return { success: false, error: '重连异常' }
+    } finally {
+      isReconnecting.value = false
+    }
+  }
+
+  // 清除重连信息
+  function clearPendingGame(): void {
+    pendingGameInfo.value = null
   }
 
   // 清除监听器
@@ -259,6 +448,12 @@ export const useGameStore = defineStore('game', () => {
     socketStore.off('game:play_turn')
     socketStore.off('game:played')
     socketStore.off('game:ended')
+    socketStore.off('player:offline')
+    socketStore.off('player:online')
+    socketStore.off('chat:emoji')
+    socketStore.off('chat:quick')
+    eventBus.offEvent('phaser:sendEmoji')
+    eventBus.offEvent('phaser:sendQuickMessage')
   }
 
   return {
@@ -268,6 +463,8 @@ export const useGameStore = defineStore('game', () => {
     selectedCardIds,
     isMyTurn,
     hintCards,
+    pendingGameInfo,
+    isReconnecting,
 
     // Computed
     mySeat,
@@ -286,6 +483,11 @@ export const useGameStore = defineStore('game', () => {
     playCards,
     pass,
     getHint,
+    sendEmoji,
+    sendQuickMessage,
     resetGame,
+    checkPendingGame,
+    reconnectToGame,
+    clearPendingGame,
   }
 })

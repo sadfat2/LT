@@ -4,6 +4,8 @@
 
 const redis = require('../models/redis')
 const GameEngine = require('../game/GameEngine')
+const config = require('../config')
+const axios = require('axios')
 
 // 存储活跃的游戏实例
 const activeGames = new Map()
@@ -271,20 +273,34 @@ function handleGameEvents(io, socket) {
    */
   socket.on('game:reconnect', async (data, callback) => {
     try {
+      // 获取重连信息
+      const reconnectInfo = await redis.getJSON(`reconnect:${user.id}`)
       const roomId = await redis.get(`user_room:${user.id}`)
-      if (!roomId) {
+
+      if (!roomId && !reconnectInfo) {
         return callback({ error: '没有进行中的游戏' })
       }
 
-      const room = await redis.getJSON(`room:${roomId}`)
+      const targetRoomId = roomId || reconnectInfo?.roomId
+
+      const room = await redis.getJSON(`room:${targetRoomId}`)
       if (!room || room.status !== 'playing') {
+        // 清除过期的重连信息
+        await redis.del(`reconnect:${user.id}`)
         return callback({ error: '没有进行中的游戏' })
       }
 
-      const game = activeGames.get(roomId)
+      const game = activeGames.get(targetRoomId)
       if (!game) {
         return callback({ error: '游戏实例不存在' })
       }
+
+      // 取消断线超时定时器
+      const { cancelDisconnectTimer } = require('./index')
+      cancelDisconnectTimer(user.id)
+
+      // 清除重连信息
+      await redis.del(`reconnect:${user.id}`)
 
       // 更新玩家在线状态
       game.playerReconnect(user.id)
@@ -293,27 +309,141 @@ function handleGameEvents(io, socket) {
       if (playerIndex !== -1) {
         room.players[playerIndex].isOnline = true
         room.players[playerIndex].disconnectTime = null
-        await redis.setJSON(`room:${roomId}`, room, { EX: 7200 })
+        room.players[playerIndex].reconnectToken = null
+        await redis.setJSON(`room:${targetRoomId}`, room, { EX: 7200 })
       }
 
+      // 确保 user_room 映射存在
+      await redis.set(`user_room:${user.id}`, targetRoomId, { EX: 7200 })
+
       // 重新加入 Socket 房间
-      socket.join(roomId)
+      socket.join(targetRoomId)
 
       // 通知其他玩家
-      socket.to(roomId).emit('player:online', { playerId: user.id })
+      socket.to(targetRoomId).emit('player:online', { playerId: user.id })
 
       // 返回完整游戏状态
       const gameState = game.getGameState(user.id)
       const playerCards = game.getPlayerCards(user.id)
 
+      console.log(`玩家 ${user.nickname} (${user.id}) 重连成功`)
+
       callback({
         success: true,
         gameState,
         cards: playerCards,
+        roomId: targetRoomId,
       })
     } catch (error) {
       console.error('重连失败:', error)
       callback({ error: '重连失败' })
+    }
+  })
+
+  /**
+   * 退出游戏
+   */
+  socket.on('game:quit', async (data, callback) => {
+    try {
+      const roomId = await redis.get(`user_room:${user.id}`)
+      if (!roomId) {
+        return callback({ success: true }) // 本来就不在房间中
+      }
+
+      const room = await redis.getJSON(`room:${roomId}`)
+      if (!room) {
+        // 房间不存在，清理用户映射
+        await redis.del(`user_room:${user.id}`)
+        return callback({ success: true })
+      }
+
+      const game = activeGames.get(roomId)
+
+      if (game && room.status === 'playing') {
+        // 游戏进行中，触发断线判负
+        console.log(`玩家 ${user.nickname} (${user.id}) 主动退出游戏，触发判负`)
+
+        // 清除计时器
+        if (game.turnTimeout) {
+          clearTimeout(game.turnTimeout)
+          game.turnTimeout = null
+        }
+
+        // 调用断线判负处理
+        await handleDisconnectForceEnd(io, roomId, user.id, game)
+      } else {
+        // 游戏未开始或已结束，正常离开房间
+        room.players = room.players.filter((p) => p.id !== user.id)
+
+        // 离开 Socket 房间
+        socket.leave(roomId)
+
+        if (room.players.length === 0) {
+          // 房间空了，删除
+          await redis.del(`room:${roomId}`)
+        } else {
+          // 如果是房主离开，转移房主
+          if (room.ownerId === user.id) {
+            room.ownerId = room.players[0].id
+          }
+          await redis.setJSON(`room:${roomId}`, room, { EX: 3600 })
+
+          // 通知其他玩家
+          io.to(roomId).emit('room:left', { roomId, playerId: user.id })
+        }
+
+        await redis.del(`user_room:${user.id}`)
+      }
+
+      callback({ success: true })
+    } catch (error) {
+      console.error('退出游戏失败:', error)
+      callback({ error: '退出游戏失败' })
+    }
+  })
+
+  /**
+   * 检查是否有未完成的游戏
+   */
+  socket.on('game:check-pending', async (data, callback) => {
+    try {
+      // 检查重连信息
+      const reconnectInfo = await redis.getJSON(`reconnect:${user.id}`)
+      const roomId = await redis.get(`user_room:${user.id}`)
+
+      if (!roomId && !reconnectInfo) {
+        return callback({ hasPendingGame: false })
+      }
+
+      const targetRoomId = roomId || reconnectInfo?.roomId
+      const room = await redis.getJSON(`room:${targetRoomId}`)
+
+      if (!room || room.status !== 'playing') {
+        return callback({ hasPendingGame: false })
+      }
+
+      const game = activeGames.get(targetRoomId)
+      if (!game) {
+        return callback({ hasPendingGame: false })
+      }
+
+      // 计算剩余重连时间
+      const playerIndex = room.players.findIndex((p) => p.id === user.id)
+      let remainingTime = 60
+
+      if (playerIndex !== -1 && room.players[playerIndex].disconnectTime) {
+        const elapsed = (Date.now() - room.players[playerIndex].disconnectTime) / 1000
+        remainingTime = Math.max(0, 60 - Math.floor(elapsed))
+      }
+
+      callback({
+        hasPendingGame: true,
+        roomId: targetRoomId,
+        remainingTime,
+      })
+    } catch (error) {
+      console.error('检查未完成游戏失败:', error)
+      callback({ hasPendingGame: false })
     }
   })
 }
@@ -458,6 +588,9 @@ async function handleGameEnd(io, roomId, game, result) {
   // 更新玩家金币和战绩
   const User = require('../models/User')
 
+  // 收集玩家信息用于同步到聊天服务
+  const playersForSync = []
+
   for (const playerResult of result.results) {
     try {
       // 更新金币
@@ -468,10 +601,25 @@ async function handleGameEnd(io, roomId, game, result) {
 
       // 记录游戏记录
       await recordGameResult(roomId, game.gameId, playerResult, result.multiplier)
+
+      // 获取用户完整信息用于同步
+      const userInfo = await User.findById(playerResult.playerId)
+      if (userInfo && userInfo.chat_user_id) {
+        playersForSync.push({
+          chatUserId: userInfo.chat_user_id,
+          nickname: userInfo.nickname,
+          role: playerResult.role,
+          isWin: playerResult.isWin,
+          coinChange: playerResult.coinChange,
+        })
+      }
     } catch (error) {
       console.error('更新玩家数据失败:', error)
     }
   }
+
+  // 同步游戏结果到聊天服务（异步，不阻塞主流程）
+  syncGameResultToChat(game.gameId, roomId, playersForSync, result.multiplier, game.baseScore)
 
   // 清理游戏实例
   activeGames.delete(roomId)
@@ -486,6 +634,45 @@ async function handleGameEnd(io, roomId, game, result) {
       p.cardCount = 0
     })
     await redis.setJSON(`room:${roomId}`, room, { EX: 3600 })
+  }
+}
+
+/**
+ * 同步游戏结果到聊天服务
+ */
+async function syncGameResultToChat(gameId, roomId, players, multiplier, baseScore) {
+  // 只有当有玩家关联了聊天用户时才同步
+  if (players.length === 0) {
+    return
+  }
+
+  try {
+    const chatServiceUrl = config.chatService.url
+    const apiKey = config.chatService.apiKey
+
+    await axios.post(
+      `${chatServiceUrl}/api/integration/game-result`,
+      {
+        gameId,
+        roomId,
+        players,
+        multiplier,
+        baseScore,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        headers: {
+          'X-API-Key': apiKey,
+          'Content-Type': 'application/json',
+        },
+        timeout: 5000, // 5秒超时
+      }
+    )
+
+    console.log(`游戏结果已同步到聊天服务: gameId=${gameId}`)
+  } catch (error) {
+    // 同步失败不影响主流程，只记录日志
+    console.error('同步游戏结果到聊天服务失败:', error.message)
   }
 }
 
@@ -542,6 +729,139 @@ function handlePlayerDisconnect(io, roomId, userId) {
   }
 }
 
+/**
+ * 处理断线判负（60秒超时）
+ */
+async function handleDisconnectForceEnd(io, roomId, userId, game) {
+  console.log(`处理断线判负: 房间=${roomId}, 玩家=${userId}`)
+
+  // 清除计时器
+  if (game.turnTimeout) {
+    clearTimeout(game.turnTimeout)
+    game.turnTimeout = null
+  }
+
+  // 找到断线玩家
+  const disconnectedPlayer = game.players.find((p) => p.id === userId)
+  if (!disconnectedPlayer) {
+    console.log('找不到断线玩家')
+    return
+  }
+
+  // 确定获胜方（断线玩家的对立方获胜）
+  let winners = []
+  if (disconnectedPlayer.role === 'landlord') {
+    // 地主断线，农民获胜
+    winners = game.players.filter((p) => p.role === 'farmer')
+  } else {
+    // 农民断线，需要判断情况
+    // 如果另一个农民也在线，则农民方整体判负，地主获胜
+    const landlord = game.players.find((p) => p.role === 'landlord')
+    winners = landlord ? [landlord] : []
+  }
+
+  if (winners.length === 0) {
+    console.log('无法确定获胜方')
+    return
+  }
+
+  // 计算积分变化（断线方输掉全部积分）
+  const baseChange = game.baseScore * game.multiplier
+  const results = []
+
+  for (const player of game.players) {
+    let coinChange = 0
+    let isWin = false
+
+    if (disconnectedPlayer.role === 'landlord') {
+      // 地主断线，地主输双倍，农民各赢单倍
+      if (player.role === 'landlord') {
+        coinChange = -baseChange * 2
+        isWin = false
+      } else {
+        coinChange = baseChange
+        isWin = true
+      }
+    } else {
+      // 农民断线，地主赢双倍，农民各输单倍
+      if (player.role === 'landlord') {
+        coinChange = baseChange * 2
+        isWin = true
+      } else {
+        coinChange = -baseChange
+        isWin = false
+      }
+    }
+
+    results.push({
+      playerId: player.id,
+      role: player.role,
+      isWin,
+      coinChange,
+    })
+  }
+
+  // 广播游戏结束（标注为断线判负）
+  io.to(roomId).emit('game:ended', {
+    winnerId: winners[0].id,
+    winnerRole: winners[0].role,
+    results,
+    multiplier: game.multiplier,
+    isSpring: false,
+    bombCount: game.bombCount,
+    reason: 'disconnect_timeout',
+    disconnectedPlayerId: userId,
+  })
+
+  // 更新玩家金币和战绩
+  const User = require('../models/User')
+  const playersForSync = []
+
+  for (const playerResult of results) {
+    try {
+      // 更新金币
+      await User.updateCoins(playerResult.playerId, playerResult.coinChange)
+
+      // 更新战绩
+      await User.updateStats(playerResult.playerId, playerResult.isWin)
+
+      // 记录游戏记录
+      await recordGameResult(roomId, game.gameId, playerResult, game.multiplier)
+
+      // 获取用户完整信息用于同步
+      const userInfo = await User.findById(playerResult.playerId)
+      if (userInfo && userInfo.chat_user_id) {
+        playersForSync.push({
+          chatUserId: userInfo.chat_user_id,
+          nickname: userInfo.nickname,
+          role: playerResult.role,
+          isWin: playerResult.isWin,
+          coinChange: playerResult.coinChange,
+        })
+      }
+    } catch (error) {
+      console.error('更新玩家数据失败:', error)
+    }
+  }
+
+  // 同步游戏结果到聊天服务
+  syncGameResultToChat(game.gameId, roomId, playersForSync, game.multiplier, game.baseScore)
+
+  // 清理游戏实例
+  activeGames.delete(roomId)
+
+  // 清理房间和用户映射
+  for (const player of game.players) {
+    await redis.del(`user_room:${player.id}`)
+    await redis.del(`reconnect:${player.id}`)
+  }
+  await redis.del(`room:${roomId}`)
+
+  console.log(`断线判负处理完成: 房间=${roomId}`)
+}
+
 module.exports = handleGameEvents
 module.exports.handlePlayerDisconnect = handlePlayerDisconnect
+module.exports.handleDisconnectForceEnd = handleDisconnectForceEnd
+module.exports.handleGameEnd = handleGameEnd
 module.exports.activeGames = activeGames

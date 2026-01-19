@@ -7,7 +7,7 @@ const User = {
   async findById(id) {
     return db.findOne(
       `SELECT id, account, nickname, avatar, coins, level, experience,
-              total_games, wins, created_at, updated_at
+              total_games, wins, created_at, updated_at, chat_user_id
        FROM users WHERE id = ?`,
       [id]
     )
@@ -16,6 +16,11 @@ const User = {
   // 根据账号查找用户
   async findByAccount(account) {
     return db.findOne('SELECT * FROM users WHERE account = ?', [account])
+  },
+
+  // 根据聊天用户ID查找用户
+  async findByChatUserId(chatUserId) {
+    return db.findOne('SELECT * FROM users WHERE chat_user_id = ?', [chatUserId])
   },
 
   // 创建用户
@@ -30,6 +35,31 @@ const User = {
     )
 
     return this.findById(id)
+  },
+
+  // 从聊天应用创建用户
+  async createFromChat(chatUser) {
+    const { id: chatUserId, account, nickname, avatar } = chatUser
+    // 生成随机密码（聊天用户不需要密码登录）
+    const randomPassword = Math.random().toString(36).substring(2, 15)
+    const hashedPassword = await bcrypt.hash(randomPassword, 10)
+
+    const userId = await db.insert(
+      `INSERT INTO users (account, password, nickname, avatar, coins, level, experience, total_games, wins, chat_user_id)
+       VALUES (?, ?, ?, ?, ?, 1, 0, 0, 0, ?)`,
+      [account, hashedPassword, nickname, avatar, config.game.initialCoins, chatUserId]
+    )
+
+    return userId
+  },
+
+  // 同步聊天应用的用户信息
+  async syncFromChat(gameUserId, chatUser) {
+    const { nickname, avatar } = chatUser
+    await db.update(
+      'UPDATE users SET nickname = ?, avatar = ?, updated_at = NOW() WHERE id = ?',
+      [nickname, avatar, gameUserId]
+    )
   },
 
   // 验证密码

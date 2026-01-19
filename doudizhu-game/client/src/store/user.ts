@@ -81,6 +81,11 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  // 设置用户信息
+  function setUser(newUser: User) {
+    user.value = newUser
+  }
+
   return {
     token,
     user,
@@ -91,5 +96,6 @@ export const useUserStore = defineStore('user', () => {
     fetchProfile,
     logout,
     updateCoins,
+    setUser,
   }
 })

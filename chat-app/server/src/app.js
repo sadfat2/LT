@@ -17,6 +17,7 @@ const webrtcRoutes = require('./routes/webrtc');
 const adminRoutes = require('./routes/admin');
 const referralRoutes = require('./routes/referral');
 const configRoutes = require('./routes/config');
+const integrationRoutes = require('./routes/integration');
 const { errorHandler } = require('./middlewares/errorHandler');
 
 const app = express();
@@ -65,6 +66,7 @@ app.use('/api/webrtc', webrtcRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/referral', referralRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/integration', integrationRoutes);
 
 // 健康检查
 app.get('/health', (req, res) => {

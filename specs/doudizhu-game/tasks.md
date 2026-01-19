@@ -349,78 +349,83 @@
 
 ## 阶段八：游戏内社交
 
-- [ ] 41. 实现表情和快捷消息（服务端）
+- [x] 41. 实现表情和快捷消息（服务端）
   - 创建 `server/src/socket/chat.js`
   - 实现 `chat:emoji` 事件
   - 实现 `chat:quick` 事件
-  - 实现发送频率限制
+  - 实现发送频率限制（10秒内最多5条）
   - _需求: REQ-009_
 
-- [ ] 42. 实现表情和快捷消息（前端）
-  - 创建表情面板组件
-  - 创建快捷消息面板
+- [x] 42. 实现表情和快捷消息（前端）
+  - 创建聊天常量 `client/src/game/chatConstants.ts`
+  - 创建表情气泡组件 `client/src/phaser/objects/EmojiBubble.ts`
+  - 创建聊天面板 `client/src/phaser/ui/ChatPanel.ts`
+  - 创建聊天按钮 `client/src/phaser/ui/ChatButton.ts`
   - 在 Phaser 场景中显示表情动画
-  - 在聊天区显示快捷消息
+  - 在 game store 中集成聊天事件
   - _需求: REQ-009_
 
 ---
 
 ## 阶段九：聊天应用集成
 
-- [ ] 43. 实现集成 API（游戏服务端）
+- [x] 43. 实现集成 API（游戏服务端）
   - 创建 `server/src/routes/integration.js`
   - 实现 `POST /api/integration/invite`（创建邀请）
   - 实现 `GET /api/integration/join`（加入邀请）
   - 实现 `POST /api/integration/verify-token`（验证聊天 token）
+  - 实现 `POST /api/integration/login-from-chat`（从聊天登录）
   - 实现 API Key 认证中间件
   - _需求: REQ-010_
 
-- [ ] 44. 聊天应用添加集成接口
+- [x] 44. 聊天应用添加集成接口
   - 在 chat-app 添加 `POST /api/integration/verify`
   - 在 chat-app 添加 `POST /api/integration/game-result`
   - 配置游戏服务 URL 环境变量
   - _需求: REQ-010, REQ-011_
 
-- [ ] 45. 实现游戏结果同步
+- [x] 45. 实现游戏结果同步
   - 游戏结束后调用聊天服务接口
-  - 发送游戏结果卡片消息
-  - 处理调用失败情况
+  - 发送游戏结果卡片消息到玩家私聊
+  - 处理调用失败情况（不阻塞主流程）
   - _需求: REQ-011_
 
 ---
 
 ## 阶段十：断线重连
 
-- [ ] 46. 实现断线检测（服务端）
+- [x] 46. 实现断线检测（服务端）
   - Socket 断开时保留座位 60 秒
-  - Redis 存储重连 token
-  - 轮到断线玩家时自动处理
+  - Redis 存储重连 token（60秒过期）
+  - 通知其他玩家断线状态和超时时间
   - _需求: REQ-012_
 
-- [ ] 47. 实现断线重连（服务端）
+- [x] 47. 实现断线重连（服务端）
   - 实现 `game:reconnect` 事件
-  - 验证重连 token
+  - 实现 `game:check-pending` 检查未完成游戏
+  - 取消断线超时定时器
   - 恢复游戏状态
-  - 60 秒超时处理（判负）
+  - 60 秒超时处理（断线方判负）
   - _需求: REQ-012_
 
-- [ ] 48. 实现断线重连（前端）
+- [x] 48. 实现断线重连（前端）
   - 检测未完成的游戏
-  - 提示"是否回到游戏"
-  - 恢复 Phaser 游戏状态
+  - 显示重连提示弹窗（倒计时）
+  - 恢复游戏状态
+  - 监听玩家上线/下线事件
   - _需求: REQ-012_
 
 ---
 
 ## 阶段十一：个人中心
 
-- [ ] 49. 前端个人中心页面
-  - 创建 `client/src/pages/profile/index.vue`
-  - 显示用户信息（头像、昵称、等级）
-  - 显示战绩统计
-  - 显示积分信息
-  - 显示签到记录
-  - 实现修改昵称功能
+- [x] 49. 前端个人中心页面
+  - 更新 `client/src/pages/profile/index.vue`
+  - 显示用户信息（头像、昵称、金币）
+  - 显示战绩统计（总场/胜利/胜率/地主/农民）
+  - 显示签到状态和签到功能
+  - 显示交易记录（最近10条）
+  - 实现修改昵称功能（弹窗编辑）
   - _需求: REQ-013_
 
 ---
@@ -490,6 +495,10 @@
 - 阶段五：游戏大厅 (6/6)
 - 阶段六：Phaser 3 游戏引擎集成 (8/8) ✅
 - 阶段七：游戏核心逻辑 (9/9) ✅
+- 阶段八：游戏内社交 (2/2) ✅
+- 阶段九：聊天应用集成 (3/3) ✅
+- 阶段十：断线重连 (3/3) ✅
+- 阶段十一：个人中心 (1/1) ✅
 
 **阶段七实现详情：**
 - 前端 `client/src/game/` 模块：
@@ -521,8 +530,79 @@
   - ✅ 地主确定和底牌分发
   - ✅ 出牌阶段轮转
 
+**阶段八实现详情：**
+- 服务端 `server/src/socket/chat.js`：
+  - 表情列表（8种表情：哈哈/生气/哭/思考/酷/惊讶/流汗/喜欢）
+  - 快捷消息列表（8条预设消息）
+  - 频率限制（10秒内最多5条，使用 Redis ZSET）
+  - `chat:emoji` 事件 - 发送/广播表情
+  - `chat:quick` 事件 - 发送/广播快捷消息
+- 前端聊天组件：
+  - `chatConstants.ts` - 表情和快捷消息定义
+  - `EmojiBubble.ts` - 表情气泡显示（带动画）
+  - `ChatPanel.ts` - 聊天面板（表情/快捷消息切换）
+  - `ChatButton.ts` - 聊天按钮（右下角）
+- GameScene 集成：
+  - 在玩家头像旁显示表情气泡
+  - 3秒自动消失（表情）/ 4秒自动消失（消息）
+- game store 集成：
+  - `sendEmoji()` / `sendQuickMessage()` 方法
+  - 监听 `chat:emoji` / `chat:quick` 事件
+
+**阶段九实现详情：**
+- 游戏服务端 `server/src/routes/integration.js`：
+  - `POST /api/integration/invite` - 创建游戏邀请（生成6位邀请码）
+  - `GET /api/integration/join` - 加入邀请（验证邀请码并加入房间）
+  - `POST /api/integration/verify-token` - 验证聊天 token
+  - `POST /api/integration/login-from-chat` - 从聊天应用登录（自动创建/关联用户）
+  - API Key 认证中间件
+- 聊天服务端 `chat-app/server/src/routes/integration.js`：
+  - `POST /api/integration/verify` - 验证用户 token
+  - `POST /api/integration/game-result` - 接收游戏结果并发送消息
+  - 游戏结果消息格式化（地主/农民/倍数/金币变化）
+- 游戏结果同步 `server/src/socket/game.js`：
+  - `syncGameResultToChat()` - 异步同步游戏结果
+  - 收集玩家 chatUserId
+  - 调用聊天服务 API（5秒超时，失败不阻塞主流程）
+- 数据库迁移 `server/sql/migrate_chat_integration.sql`：
+  - 添加 `chat_user_id` 字段到 users 表
+  - 创建索引和唯一约束
+- User 模型扩展：
+  - `findByChatUserId()` - 根据聊天用户ID查找
+  - `createFromChat()` - 从聊天应用创建用户
+  - `syncFromChat()` - 同步聊天应用用户信息
+
+**阶段十实现详情：**
+- 服务端断线检测 `server/src/socket/index.js`：
+  - 生成重连 token（crypto.randomBytes）
+  - Redis 存储重连信息（`reconnect:{userId}`，60秒过期）
+  - 60秒超时定时器（disconnectTimers Map）
+  - `cancelDisconnectTimer()` 取消定时器
+- 服务端断线处理 `server/src/socket/game.js`：
+  - `game:reconnect` - 重连到游戏
+  - `game:check-pending` - 检查未完成游戏
+  - `handleDisconnectForceEnd()` - 断线判负处理
+  - 断线方输掉全部积分（地主双倍、农民单倍）
+- 前端断线重连 `client/src/store/game.ts`：
+  - `checkPendingGame()` - 检查未完成游戏
+  - `reconnectToGame()` - 执行重连
+  - `pendingGameInfo` / `isReconnecting` 状态
+  - 监听 `player:offline` / `player:online` 事件
+- 前端重连提示 `client/src/pages/lobby/index.vue`：
+  - 重连对话框（倒计时显示）
+  - 自动检查未完成游戏
+  - 监听 socket 连接状态
+
+**阶段十一实现详情：**
+- 个人中心页面 `client/src/pages/profile/index.vue`：
+  - 用户信息卡片（头像、昵称、账号、金币）
+  - 修改昵称功能（弹窗编辑）
+  - 签到卡片（连续签到天数、签到按钮）
+  - 战绩统计（总场/胜利/胜率/地主战绩/农民战绩）
+  - 交易记录列表（最近10条）
+- User Store 扩展：
+  - `setUser()` - 设置用户信息
+
 **下一步：**
-- 阶段八：游戏内社交（任务 41-42）
-  - 表情和快捷消息功能
-- 阶段九：聊天应用集成（任务 43-45）
-  - 邀请链接、跨服务认证、结果同步
+- 阶段十二：测试与优化（任务 50-53）
+- 阶段十三：部署（任务 54-55）

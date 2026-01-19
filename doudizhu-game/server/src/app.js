@@ -13,6 +13,7 @@ const authRoutes = require('./routes/auth')
 const userRoutes = require('./routes/user')
 const coinsRoutes = require('./routes/coins')
 const roomRoutes = require('./routes/room')
+const integrationRoutes = require('./routes/integration')
 
 // Socket 处理
 const initSocket = require('./socket')
@@ -43,6 +44,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/user', userRoutes)
 app.use('/api/coins', coinsRoutes)
 app.use('/api/rooms', roomRoutes)
+app.use('/api/integration', integrationRoutes)
 
 // 错误处理
 app.use((err, req, res, next) => {

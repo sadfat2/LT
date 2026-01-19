@@ -35,6 +35,13 @@ export interface GameEvents {
   'ui:showResult': { winnerId: number; results: GameResult[] }
   'ui:updateTimer': { seat: number; time: number }
   'ui:hideTimer': { seat: number }
+
+  // 聊天事件
+  'phaser:sendEmoji': { emojiId: string }
+  'phaser:sendQuickMessage': { messageId: string }
+  'vue:showEmoji': { seat: number; emojiId: string; symbol: string }
+  'vue:showQuickMessage': { seat: number; messageId: string; text: string }
+  'ui:toggleChatPanel': void
 }
 
 // 事件回调类型

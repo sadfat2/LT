@@ -5,6 +5,7 @@ import { CardGroup } from '../objects/CardGroup'
 import { PlayedCardsArea } from '../objects/PlayedCardsArea'
 import { PlayerAvatar } from '../objects/PlayerAvatar'
 import { Timer } from '../objects/Timer'
+import { EmojiBubble } from '../objects/EmojiBubble'
 import type { Card, Player, GameState, PlayInfo } from '@/types'
 
 export class GameScene extends Phaser.Scene {
@@ -30,6 +31,9 @@ export class GameScene extends Phaser.Scene {
   // 计时器
   private timers: Timer[] = []
 
+  // 表情气泡
+  private emojiBubbles: EmojiBubble[] = []
+
   // 游戏信息显示
   private gameInfoText: Phaser.GameObjects.Text | null = null
 
@@ -44,6 +48,7 @@ export class GameScene extends Phaser.Scene {
     this.createPlayerAvatars()
     this.createPlayedAreas()
     this.createTimers()
+    this.createEmojiBubbles()
     this.createHandCards()
 
     this.setupEventListeners()
@@ -134,6 +139,20 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private createEmojiBubbles(): void {
+    // 创建三个玩家的表情气泡
+    for (let i = 0; i < 3; i++) {
+      const playerLayout = LAYOUT.players[i]
+      const bubbleOffset = LAYOUT.emojiBubble[i]
+      if (!playerLayout || !bubbleOffset) continue
+
+      const x = playerLayout.avatar.x + bubbleOffset.offsetX
+      const y = playerLayout.avatar.y + bubbleOffset.offsetY
+      const bubble = new EmojiBubble(this, x, y)
+      this.emojiBubbles.push(bubble)
+    }
+  }
+
   private createHandCards(): void {
     const playerLayout = LAYOUT.players[0]
     if (!playerLayout) return
@@ -191,6 +210,34 @@ export class GameScene extends Phaser.Scene {
     this.eventBus.onEvent('vue:resetGame', () => {
       this.resetGame()
     })
+
+    // 显示表情
+    this.eventBus.onEvent('vue:showEmoji', ({ seat, symbol }) => {
+      this.showEmojiBubble(seat, symbol)
+    })
+
+    // 显示快捷消息
+    this.eventBus.onEvent('vue:showQuickMessage', ({ seat, text }) => {
+      this.showMessageBubble(seat, text)
+    })
+  }
+
+  // 显示表情气泡
+  private showEmojiBubble(seat: number, symbol: string): void {
+    const displayIndex = this.getDisplayIndex(seat)
+    const bubble = this.emojiBubbles[displayIndex]
+    if (bubble) {
+      bubble.showEmoji(symbol)
+    }
+  }
+
+  // 显示消息气泡
+  private showMessageBubble(seat: number, text: string): void {
+    const displayIndex = this.getDisplayIndex(seat)
+    const bubble = this.emojiBubbles[displayIndex]
+    if (bubble) {
+      bubble.showMessage(text)
+    }
   }
 
   // 更新游戏状态
@@ -289,6 +336,7 @@ export class GameScene extends Phaser.Scene {
 
   // 叫分回合
   private onBidTurn(seat: number, timeout: number): void {
+    console.log('[GameScene] onBidTurn', { seat, mySeat: this.mySeat, timeout })
     const displayIndex = this.getDisplayIndex(seat)
 
     // 高亮当前玩家
@@ -306,8 +354,10 @@ export class GameScene extends Phaser.Scene {
     })
 
     // 如果是自己的回合，显示叫分面板
+    console.log('[GameScene] 检查是否显示叫分面板', { seat, mySeat: this.mySeat, shouldShow: seat === this.mySeat })
     if (seat === this.mySeat) {
       const currentBid = this.gameState?.bidScore || 0
+      console.log('[GameScene] 发送 ui:showBidPanel 事件', { currentBid })
       this.eventBus.emitEvent('ui:showBidPanel', { currentBid })
     }
   }

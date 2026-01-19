@@ -1,5 +1,10 @@
 const redis = require('../models/redis')
 const { v4: uuidv4 } = require('uuid')
+const GameEngine = require('../game/GameEngine')
+const { activeGames } = require('./game')
+
+// 回合超时时间（毫秒）
+const TURN_TIMEOUT = 30000
 
 function handleRoomEvents(io, socket) {
   const user = socket.user
@@ -194,8 +199,49 @@ function handleRoomEvents(io, socket) {
 
       // 检查是否可以开始游戏
       if (room.players.length === 3 && room.players.every((p) => p.isReady)) {
-        // 所有人都准备好了，开始游戏
-        io.to(roomId).emit('game:starting', { roomId })
+        // 所有人都准备好了，自动开始游戏
+        try {
+          // 创建游戏实例
+          const game = new GameEngine(roomId, room.players, room.baseScore)
+          game.dealCards()
+
+          // 保存游戏实例
+          activeGames.set(roomId, game)
+
+          // 更新房间状态
+          room.status = 'playing'
+          room.gameId = game.gameId
+          await redis.setJSON(`room:${roomId}`, room, { EX: 7200 })
+
+          // 通知所有人游戏即将开始
+          console.log(`[游戏] 发送 game:starting 事件`)
+          io.to(roomId).emit('game:starting', { roomId })
+
+          // 先广播游戏开始（设置 gameState）
+          const gameState = game.getGameState()
+          console.log(`[游戏] 发送 game:started 事件, phase=${gameState.phase}, currentSeat=${gameState.currentSeat}`)
+          io.to(roomId).emit('game:started', { gameState })
+
+          // 向每个玩家发送他们的手牌
+          for (const player of game.players) {
+            const socketId = await redis.get(`online:${player.id}`)
+            console.log(`[游戏] 发牌给玩家 ${player.id}, socketId=${socketId}, 牌数=${player.cards.length}`)
+            if (socketId) {
+              io.to(socketId).emit('game:dealt', {
+                cards: player.cards,
+                seat: player.seat,
+              })
+            }
+          }
+
+          // 开始叫地主回合
+          console.log(`[游戏] 开始叫地主回合, currentSeat=${game.currentSeat}`)
+          startBidTurn(io, roomId, game)
+
+          console.log(`游戏自动开始: 房间=${roomId}`)
+        } catch (error) {
+          console.error('自动开始游戏失败:', error)
+        }
       }
 
       callback({ success: true, isReady: room.players[playerIndex].isReady })
@@ -376,6 +422,130 @@ function handleRoomEvents(io, socket) {
       callback({ error: '获取房间列表失败' })
     }
   })
+}
+
+/**
+ * 开始叫地主回合
+ */
+function startBidTurn(io, roomId, game) {
+  const currentPlayer = game.players[game.currentSeat]
+  console.log(`[叫地主] startBidTurn 被调用, currentSeat=${game.currentSeat}, player=${currentPlayer?.id}`)
+
+  // 广播当前回合
+  console.log(`[叫地主] 发送 game:bid_turn 事件, seat=${game.currentSeat}`)
+  io.to(roomId).emit('game:bid_turn', {
+    seat: game.currentSeat,
+    timeout: TURN_TIMEOUT,
+  })
+
+  // 设置超时
+  game.turnStartTime = Date.now()
+  game.turnTimeout = setTimeout(async () => {
+    // 超时自动不叫
+    const result = game.bid(currentPlayer.id, 0)
+
+    io.to(roomId).emit('game:bid', {
+      bidInfo: { seat: game.currentSeat, score: 0 },
+    })
+
+    if (result.decided) {
+      if (result.redeal) {
+        await handleRedeal(io, roomId, game)
+      } else {
+        io.to(roomId).emit('game:landlord_decided', {
+          seat: result.landlordSeat,
+          bottomCards: result.bottomCards,
+          bidScore: result.bidScore,
+        })
+        startPlayTurn(io, roomId, game)
+      }
+    } else {
+      startBidTurn(io, roomId, game)
+    }
+  }, TURN_TIMEOUT)
+}
+
+/**
+ * 开始出牌回合
+ */
+function startPlayTurn(io, roomId, game) {
+  const currentPlayer = game.players[game.currentSeat]
+
+  // 广播当前回合
+  io.to(roomId).emit('game:play_turn', {
+    seat: game.currentSeat,
+    timeout: TURN_TIMEOUT,
+  })
+
+  // 设置超时
+  game.turnStartTime = Date.now()
+  game.turnTimeout = setTimeout(async () => {
+    // 超时自动处理
+    const result = game.handleTimeout()
+
+    if (result.success) {
+      if (result.isPass) {
+        io.to(roomId).emit('game:played', {
+          playInfo: {
+            seat: game.players.find((p) => p.id === currentPlayer.id).seat,
+            cards: [],
+            pattern: null,
+            isPass: true,
+          },
+        })
+      } else if (result.pattern) {
+        io.to(roomId).emit('game:played', {
+          playInfo: {
+            seat: game.players.find((p) => p.id === currentPlayer.id).seat,
+            cards: result.cards,
+            pattern: result.pattern,
+            isPass: false,
+          },
+        })
+      }
+
+      if (result.gameOver) {
+        // 游戏结束逻辑由 game.js 处理
+        const { handleGameEnd } = require('./game')
+        if (handleGameEnd) {
+          await handleGameEnd(io, roomId, game, result)
+        }
+      } else {
+        startPlayTurn(io, roomId, game)
+      }
+    }
+  }, TURN_TIMEOUT)
+}
+
+/**
+ * 处理重新发牌
+ */
+async function handleRedeal(io, roomId, game) {
+  // 重新创建游戏实例
+  const room = await redis.getJSON(`room:${roomId}`)
+  const newGame = new GameEngine(roomId, room.players, room.baseScore)
+  newGame.dealCards()
+
+  activeGames.set(roomId, newGame)
+
+  // 向每个玩家发送新手牌
+  for (const player of newGame.players) {
+    const socketId = await redis.get(`online:${player.id}`)
+    if (socketId) {
+      io.to(socketId).emit('game:dealt', {
+        cards: player.cards,
+        seat: player.seat,
+      })
+    }
+  }
+
+  // 广播重新开始
+  io.to(roomId).emit('game:redeal', {
+    gameState: newGame.getGameState(),
+  })
+
+  // 重新开始叫地主
+  startBidTurn(io, roomId, newGame)
 }
 
 module.exports = handleRoomEvents

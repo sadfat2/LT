@@ -4,6 +4,8 @@ import { getEventBus } from '../EventBus'
 import { BidPanel } from '../ui/BidPanel'
 import { ActionButtons } from '../ui/ActionButtons'
 import { ResultPanel } from '../ui/ResultPanel'
+import { ChatPanel } from '../ui/ChatPanel'
+import { ChatButton } from '../ui/ChatButton'
 import type { GameResult } from '@/types'
 
 export class UIScene extends Phaser.Scene {
@@ -12,6 +14,8 @@ export class UIScene extends Phaser.Scene {
   private bidPanel!: BidPanel
   private actionButtons!: ActionButtons
   private resultPanel!: ResultPanel
+  private chatPanel!: ChatPanel
+  // chatButton 创建后自动工作，不需要存储引用
 
   constructor() {
     super({ key: 'UIScene' })
@@ -45,6 +49,20 @@ export class UIScene extends Phaser.Scene {
       this,
       LAYOUT.ui.resultPanel.x,
       LAYOUT.ui.resultPanel.y
+    )
+
+    // 聊天面板
+    this.chatPanel = new ChatPanel(
+      this,
+      LAYOUT.ui.chatPanel.x,
+      LAYOUT.ui.chatPanel.y
+    )
+
+    // 聊天按钮（创建后自动工作）
+    new ChatButton(
+      this,
+      LAYOUT.ui.chatButton.x,
+      LAYOUT.ui.chatButton.y
     )
   }
 
@@ -111,6 +129,12 @@ export class UIScene extends Phaser.Scene {
       this.bidPanel.hide()
       this.actionButtons.hide()
       this.resultPanel.hide()
+      this.chatPanel.hide()
+    })
+
+    // 切换聊天面板
+    this.eventBus.onEvent('ui:toggleChatPanel', () => {
+      this.chatPanel.toggle()
     })
   }
 

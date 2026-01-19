@@ -49,8 +49,14 @@ onUnmounted(() => {
 })
 
 // 返回大厅
-function goBack() {
-  router.push('/lobby')
+async function goBack() {
+  try {
+    // 通知后端退出游戏
+    await socketStore.emit('game:quit', {})
+  } catch (error) {
+    console.error('退出游戏失败:', error)
+  }
+  router.push('/')
 }
 </script>
 

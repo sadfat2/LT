@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useSocketStore } from '@/store/socket'
 import { useRoomStore } from '@/store/room'
+import { useGameStore } from '@/store/game'
 import api from '@/api'
 import type { CheckinStatus } from '@/types'
 
@@ -11,9 +12,13 @@ const router = useRouter()
 const userStore = useUserStore()
 const socketStore = useSocketStore()
 const roomStore = useRoomStore()
+const gameStore = useGameStore()
 
 const checkinStatus = ref<CheckinStatus | null>(null)
 const showCreateRoom = ref(false)
+const showReconnectDialog = ref(false)
+const reconnectRemainingTime = ref(0)
+const isReconnecting = ref(false)
 
 const newRoom = ref({
   name: '',
@@ -22,6 +27,80 @@ const newRoom = ref({
 
 // 刷新间隔
 let refreshInterval: ReturnType<typeof setInterval> | null = null
+let reconnectCountdown: ReturnType<typeof setInterval> | null = null
+
+// 检查未完成的游戏
+const checkPendingGame = async () => {
+  if (!socketStore.isConnected) return
+
+  try {
+    const result = await gameStore.checkPendingGame()
+    if (result.hasPendingGame && result.remainingTime && result.remainingTime > 0) {
+      reconnectRemainingTime.value = result.remainingTime
+      showReconnectDialog.value = true
+
+      // 开始倒计时
+      startReconnectCountdown()
+    }
+  } catch (error) {
+    console.error('检查未完成游戏失败:', error)
+  }
+}
+
+// 开始重连倒计时
+const startReconnectCountdown = () => {
+  if (reconnectCountdown) {
+    clearInterval(reconnectCountdown)
+  }
+
+  reconnectCountdown = setInterval(() => {
+    reconnectRemainingTime.value--
+    if (reconnectRemainingTime.value <= 0) {
+      // 超时，关闭对话框
+      showReconnectDialog.value = false
+      gameStore.clearPendingGame()
+      if (reconnectCountdown) {
+        clearInterval(reconnectCountdown)
+        reconnectCountdown = null
+      }
+    }
+  }, 1000)
+}
+
+// 处理重连
+const handleReconnect = async () => {
+  if (isReconnecting.value) return
+
+  isReconnecting.value = true
+  try {
+    const result = await gameStore.reconnectToGame()
+    if (result.success && result.roomId) {
+      showReconnectDialog.value = false
+      if (reconnectCountdown) {
+        clearInterval(reconnectCountdown)
+        reconnectCountdown = null
+      }
+      router.push(`/game/${result.roomId}`)
+    } else {
+      alert(result.error || '重连失败')
+    }
+  } catch (error) {
+    console.error('重连失败:', error)
+    alert('重连失败')
+  } finally {
+    isReconnecting.value = false
+  }
+}
+
+// 放弃重连
+const handleCancelReconnect = () => {
+  showReconnectDialog.value = false
+  gameStore.clearPendingGame()
+  if (reconnectCountdown) {
+    clearInterval(reconnectCountdown)
+    reconnectCountdown = null
+  }
+}
 
 // 加载房间列表
 const loadRooms = async () => {
@@ -111,13 +190,29 @@ onMounted(() => {
   loadRooms()
   loadCheckinStatus()
 
+  // 检查未完成的游戏
+  checkPendingGame()
+
   // 定时刷新房间列表
   refreshInterval = setInterval(loadRooms, 5000)
 })
 
+// 监听 socket 连接状态变化，连接后检查未完成游戏
+watch(
+  () => socketStore.isConnected,
+  (connected) => {
+    if (connected) {
+      checkPendingGame()
+    }
+  }
+)
+
 onUnmounted(() => {
   if (refreshInterval) {
     clearInterval(refreshInterval)
+  }
+  if (reconnectCountdown) {
+    clearInterval(reconnectCountdown)
   }
 })
 </script>
@@ -223,6 +318,21 @@ onUnmounted(() => {
         <div class="modal-actions">
           <button class="btn-cancel" @click="showCreateRoom = false">取消</button>
           <button class="btn-confirm" @click="handleCreateRoom">创建</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 重连提示弹窗 -->
+    <div v-if="showReconnectDialog" class="modal-overlay">
+      <div class="modal-content reconnect-modal">
+        <h3>游戏进行中</h3>
+        <p class="reconnect-message">您有一局未完成的游戏</p>
+        <p class="reconnect-countdown">剩余时间: {{ reconnectRemainingTime }}秒</p>
+        <div class="modal-actions">
+          <button class="btn-cancel" @click="handleCancelReconnect">放弃</button>
+          <button class="btn-confirm" :disabled="isReconnecting" @click="handleReconnect">
+            {{ isReconnecting ? '重连中...' : '立即回到游戏' }}
+          </button>
         </div>
       </div>
     </div>
@@ -546,7 +656,28 @@ onUnmounted(() => {
       &.btn-confirm {
         background: $primary-color;
         color: $text-light;
+
+        &:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
       }
+    }
+  }
+
+  &.reconnect-modal {
+    .reconnect-message {
+      text-align: center;
+      color: $text-secondary;
+      margin-bottom: $spacing-sm;
+    }
+
+    .reconnect-countdown {
+      text-align: center;
+      color: $error-color;
+      font-size: $font-size-lg;
+      font-weight: bold;
+      margin-bottom: $spacing-md;
     }
   }
 }

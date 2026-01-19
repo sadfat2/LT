@@ -22,10 +22,10 @@ module.exports = {
     url: process.env.REDIS_URL || 'redis://localhost:6380',
   },
 
-  // 聊天服务配置（用于跨应用登录）
+  // 聊天服务配置（用于跨应用集成）
   chatService: {
     url: process.env.CHAT_SERVICE_URL || 'http://localhost:3000',
-    apiKey: process.env.CHAT_API_KEY || '',
+    apiKey: process.env.CHAT_API_KEY || 'doudizhu_integration_key_2024',
   },
 
   // 游戏配置

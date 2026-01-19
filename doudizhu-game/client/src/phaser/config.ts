@@ -44,7 +44,16 @@ export const LAYOUT = {
     actionButtons: { x: GAME_WIDTH / 2, y: 540 },
     resultPanel: { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 },
     gameInfo: { x: GAME_WIDTH - 20, y: 20 },
+    chatPanel: { x: GAME_WIDTH - 160, y: GAME_HEIGHT - 200 },
+    chatButton: { x: GAME_WIDTH - 50, y: GAME_HEIGHT - 50 },
   },
+
+  // 表情气泡位置偏移（相对于玩家头像）
+  emojiBubble: [
+    { offsetX: 80, offsetY: -60 },   // 自己
+    { offsetX: -80, offsetY: -60 },  // 下家（右边）
+    { offsetX: 80, offsetY: -60 },   // 上家（左边）
+  ],
 
   // 手牌配置
   handCards: {
