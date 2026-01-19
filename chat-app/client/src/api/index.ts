@@ -22,7 +22,7 @@ export const authApi = {
 
   // 验证推荐码
   verifyReferral: (code: string) =>
-    get<{ valid: boolean; referrer: { id: number; nickname: string; avatar: string | null } }>(`/api/referral/verify/${code}`)
+    get<{ valid: boolean; ipAllowed: boolean; referrer: { id: number; nickname: string; avatar: string | null } }>(`/api/referral/verify/${code}`)
 }
 
 // 用户相关

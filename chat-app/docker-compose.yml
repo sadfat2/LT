@@ -50,7 +50,7 @@ services:
       REDIS_PORT: 6379
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
       # 功能开关
-      FEATURE_REGISTER_ENABLED: "false"
+      FEATURE_REGISTER_ENABLED: "true"
       FEATURE_VOICE_CALL_ENABLED: "true"
       # IP注册限制
       IP_LIMIT_ENABLED: "true"

@@ -49,6 +49,8 @@ function generatePassword() {
 /**
  * 验证推荐码（公开接口）
  * GET /api/referral/verify/:code
+ *
+ * 返回推荐码是否有效，以及当前 IP 是否可以注册
  */
 router.get('/verify/:code', async (req, res, next) => {
   try {
@@ -63,6 +65,18 @@ router.get('/verify/:code', async (req, res, next) => {
       throw new AppError('推荐链接已失效', 400);
     }
 
+    // 检查 IP 是否可以注册
+    let ipAllowed = true;
+    const clientIp = getClientIp(req);
+
+    if (config.ipLimit.enabled) {
+      ipAllowed = await IpRegisterLimit.canRegister(
+        clientIp,
+        link.id,
+        config.ipLimit.maxRegistrationsPerLink
+      );
+    }
+
     // 增加点击次数
     await ReferralLink.incrementClickCount(link.id);
 
@@ -70,6 +84,7 @@ router.get('/verify/:code', async (req, res, next) => {
       code: 200,
       data: {
         valid: true,
+        ipAllowed,
         referrer: {
           id: link.user_id,
           nickname: link.user_nickname,

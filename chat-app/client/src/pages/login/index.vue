@@ -81,12 +81,6 @@
           </button>
         </view>
 
-        <!-- 注册链接 -->
-        <view v-if="configStore.registerEnabled" class="register-section" @click="goRegister">
-          <text class="register-text">还没有账号？</text>
-          <text class="register-link">立即注册</text>
-          <view class="arrow-icon">→</view>
-        </view>
       </view>
 
       <!-- 底部装饰 -->
@@ -98,21 +92,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useUserStore } from '../../store/user'
-import { useConfigStore } from '../../store/config'
 
 const userStore = useUserStore()
-const configStore = useConfigStore()
 
 const account = ref('')
 const password = ref('')
 const loading = ref(false)
 const showPassword = ref(false)
-
-onMounted(() => {
-  configStore.fetchConfig()
-})
 
 const canSubmit = computed(() => {
   return account.value.length >= 4 && password.value.length >= 6
@@ -133,10 +121,6 @@ const handleLogin = async () => {
   } finally {
     loading.value = false
   }
-}
-
-const goRegister = () => {
-  uni.navigateTo({ url: '/pages/register/index' })
 }
 </script>
 
@@ -427,40 +411,6 @@ const goRegister = () => {
 
 .login-btn.active:active .btn-shine {
   left: 100%;
-}
-
-/* 注册链接 */
-.register-section {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 48rpx;
-  padding: 24rpx;
-  gap: 8rpx;
-}
-
-.register-text {
-  font-size: var(--text-base);
-  color: var(--text-tertiary);
-}
-
-.register-link {
-  font-size: var(--text-base);
-  font-weight: var(--font-medium);
-  background: var(--gradient-primary);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.arrow-icon {
-  font-size: var(--text-sm);
-  color: var(--accent-primary);
-  transition: transform var(--duration-fast);
-}
-
-.register-section:active .arrow-icon {
-  transform: translateX(8rpx);
 }
 
 /* 底部 */

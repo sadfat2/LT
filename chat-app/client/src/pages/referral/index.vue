@@ -10,7 +10,7 @@
       <!-- 加载中 -->
       <view v-if="loading" class="loading-section">
         <view class="spinner"></view>
-        <text class="loading-text">正在为您创建账号...</text>
+        <text class="loading-text">{{ loadingText }}</text>
       </view>
 
       <!-- 错误 -->
@@ -39,6 +39,14 @@
         <button class="start-btn" @click="goChat">开始聊天</button>
       </view>
     </view>
+
+    <!-- 注册弹窗 -->
+    <ReferralRegisterModal
+      :visible="showRegisterModal"
+      :loading="registerLoading"
+      @confirm="handleCustomRegister"
+      @skip="handleAutoRegister"
+    />
   </view>
 </template>
 
@@ -46,14 +54,22 @@
 import { ref, onMounted } from 'vue'
 import { useUserStore } from '../../store/user'
 import { useSocketStore } from '../../store/socket'
+import { authApi } from '../../api'
+import ReferralRegisterModal from '../../components/ReferralRegisterModal.vue'
 
 const userStore = useUserStore()
 const socketStore = useSocketStore()
 
 const loading = ref(true)
+const loadingText = ref('正在验证链接...')
 const error = ref('')
 const success = ref(false)
 const accountInfo = ref({ account: '', password: '' })
+
+// 弹窗相关
+const showRegisterModal = ref(false)
+const registerLoading = ref(false)
+const referralCode = ref('')
 
 onMounted(async () => {
   // 获取推荐码
@@ -81,10 +97,77 @@ onMounted(async () => {
     return
   }
 
+  referralCode.value = code
+
+  try {
+    // 验证推荐码有效性
+    const res = await authApi.verifyReferral(code)
+    if (res.data.valid) {
+      // 检查 IP 是否已使用过此推荐链接
+      if (!res.data.ipAllowed) {
+        loading.value = false
+        error.value = '您已通过此推荐链接注册过，无法再次注册'
+        return
+      }
+      // 推荐码有效且 IP 可用，显示注册弹窗
+      loading.value = false
+      showRegisterModal.value = true
+    } else {
+      loading.value = false
+      error.value = '推荐链接无效或已过期'
+    }
+  } catch (err: any) {
+    console.error('验证推荐码失败:', err)
+    loading.value = false
+    error.value = err.message || '网络错误，请重试'
+  }
+})
+
+// 自定义注册
+const handleCustomRegister = async (data: { account: string; password: string }) => {
+  if (registerLoading.value) return
+
+  registerLoading.value = true
+  try {
+    const res = await authApi.register(data.account, data.password, referralCode.value)
+
+    accountInfo.value = {
+      account: data.account,
+      password: data.password
+    }
+
+    // 自动登录
+    userStore.token = res.data.token
+    userStore.user = res.data.user
+    uni.setStorageSync('token', res.data.token)
+    uni.setStorageSync('user', res.data.user)
+
+    showRegisterModal.value = false
+    success.value = true
+  } catch (err: any) {
+    console.error('注册失败:', err)
+    uni.showToast({
+      title: err.message || '注册失败',
+      icon: 'none'
+    })
+  } finally {
+    registerLoading.value = false
+  }
+}
+
+// 自动注册（跳过）
+const handleAutoRegister = async () => {
+  if (registerLoading.value) return
+
+  registerLoading.value = true
+  showRegisterModal.value = false
+  loading.value = true
+  loadingText.value = '正在为您创建账号...'
+
   try {
     // 调用自动注册接口
     const res = await uni.request({
-      url: `${import.meta.env.VITE_API_BASE_URL || ''}/api/referral/auto-register/${code}`,
+      url: `${import.meta.env.VITE_API_BASE_URL || ''}/api/referral/auto-register/${referralCode.value}`,
       method: 'POST'
     }) as any
 
@@ -110,8 +193,9 @@ onMounted(async () => {
     error.value = err.message || '网络错误，请重试'
   } finally {
     loading.value = false
+    registerLoading.value = false
   }
-})
+}
 
 const goLogin = () => {
   uni.reLaunch({ url: '/pages/login/index' })
